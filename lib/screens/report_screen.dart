@@ -9,24 +9,13 @@ class ReportScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = ReportService.normalize(ReportService.instance.current);
 
-    String ageText() {
-      final typed = r.age;
-      final fromFace = r.face?.age;
-      final value = typed ?? fromFace;
-      return value == null ? '—' : value.toString();
-    }
-
-    String genderText() {
-      final typed = r.gender;
-      final fromFace = r.face?.gender;
-      return (typed ?? fromFace) ?? '—';
-    }
-
-    String glassesText() {
-      final g = r.face?.wearingGlasses;
-      if (g == null) return 'No/Unknown';
-      return g ? 'Yes' : 'No';
-    }
+    // Prefer typed-in age/gender, fall back to face estimation
+    final name = (r.name?.trim().isNotEmpty == true) ? r.name : '—';
+    final age = r.age ?? r.face?.age;
+    final gender = r.gender ?? r.face?.gender;
+    final glassesDetected = r.face?.wearingGlasses == true
+        ? 'Yes'
+        : 'No/Unknown';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Your Report')),
@@ -34,46 +23,92 @@ class ReportScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // Profile
-          const Text(
-            'Profile',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+          Text('Profile', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text('Name: ${r.name ?? '—'}'),
-          Text('Age: ${ageText()}   •   Gender: ${genderText()}'),
-          Text('Glasses detected in photo: ${glassesText()}'),
-          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Name: $name'),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Age: ${age?.toString() ?? '—'}   •   Gender: ${gender ?? '—'}',
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Glasses detected in photo: $glassesDetected'),
+                  if (r.ageGroupLabel != null) ...[
+                    const SizedBox(height: 8),
+                    Text('Age group: ${r.ageGroupLabel}'),
+                  ],
+                ],
+              ),
+            ),
+          ),
 
-          // Visual acuity
-          const Text(
-            'Visual Acuity',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+          const SizedBox(height: 12),
+
+          // Visual Acuity
+          Text('Visual Acuity', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(
-            'Right eye: ${r.right?.snellen ?? '—'} (logMAR ${r.right?.logMAR.toStringAsFixed(2) ?? '—'})',
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Right eye: ${r.right?.snellen ?? '—'} '
+                    '(${r.right == null ? '' : 'logMAR ${r.right!.logMAR.toStringAsFixed(2)}'})',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Left eye : ${r.left?.snellen ?? '—'} '
+                    '(${r.left == null ? '' : 'logMAR ${r.left!.logMAR.toStringAsFixed(2)}'})',
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Overall: ${r.overallLabel}'),
+                  if (r.ageAdjustedVerdict != null) ...[
+                    const SizedBox(height: 4),
+                    Text('Age-adjusted: ${r.ageAdjustedVerdict}'),
+                  ],
+                ],
+              ),
+            ),
           ),
-          Text(
-            'Left eye : ${r.left?.snellen ?? '—'} (logMAR ${r.left?.logMAR.toStringAsFixed(2) ?? '—'})',
-          ),
-          Text('Overall: ${r.overallLabel}'),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 12),
 
           // Assessment
-          const Text(
-            'Assessment',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+          Text('Assessment', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(r.assessment),
-          Text('Warnings: ${r.warning ?? 'None'}'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.assessment),
+                  const SizedBox(height: 8),
+                  Text('Warnings: ${r.warning ?? 'None'}'),
+                  if (r.refractiveHint != null) ...[
+                    const SizedBox(height: 8),
+                    Text('Refractive hint: ${r.refractiveHint}'),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
           const SizedBox(height: 16),
 
-          // Restart
           OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
-            },
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/report',
+              (route) => false,
+            ),
             icon: const Icon(Icons.refresh),
             label: const Text('Restart'),
           ),
