@@ -34,17 +34,24 @@ class ReportData {
   // From photo analysis (optional)
   ReportFace? face;
 
-  // Per-eye acuity for the report
+  // ------------------------------------------------------------------
+  // Primary section shown in your current UI (kept for backward-compat)
+  // By default we show the Distance results here if they exist; else Near.
   _PseudoAcuity? right;
   _PseudoAcuity? left;
+
+  // Store results per mode for richer assessment
+  _PseudoAcuity? distanceRight;
+  _PseudoAcuity? distanceLeft;
+  _PseudoAcuity? nearRight;
+  _PseudoAcuity? nearLeft;
 
   // Advisory text (user-facing)
   String? warning;
 
-  // NEW: Age classification + age-adjusted assessment + refractive hint
-  String? ageGroupLabel; // e.g., "Child (6–12)", "Adult (18–39)"
-  String?
-  ageAdjustedVerdict; // e.g., "Within normal for age" / "Refer (below age norms)"
+  // Age classification + age-adjusted assessment + refractive hint
+  String? ageGroupLabel; // e.g., "Adult (18–39)"
+  String? ageAdjustedVerdict; // e.g., "Within normal range for age"
   String? refractiveHint; // e.g., "Likely short-sight (myopia)"
 
   // Convenience getters for UI
@@ -52,11 +59,16 @@ class ReportData {
   String get assessment =>
       'Right: ${right?.snellen ?? '—'}  •  Left: ${left?.snellen ?? '—'}';
 
+  bool get hasDistance => distanceRight != null || distanceLeft != null;
+  bool get hasNear => nearRight != null || nearLeft != null;
+
   _PseudoAcuity? get _worst {
-    if (right == null && left == null) return null;
-    if (left == null) return right;
-    if (right == null) return left;
-    return right!.logMAR >= left!.logMAR ? right : left;
+    final r = right;
+    final l = left;
+    if (r == null && l == null) return null;
+    if (l == null) return r;
+    if (r == null) return l;
+    return r.logMAR >= l.logMAR ? r : l;
   }
 }
 
@@ -75,7 +87,7 @@ class ReportService {
     current.gender = gender;
   }
 
-  /// Backwards-compat: simple setters if you call them separately.
+  /// Backwards-compat setters if you call them separately.
   void updateName(String? v) =>
       current.name = (v == null || v.trim().isEmpty) ? null : v.trim();
   void updateAge(int? v) => current.age = v;
@@ -110,56 +122,169 @@ class ReportService {
   }
 
   // ---------------- Acuity results + derived assessments ----------------
-
-  /// Convert incoming results and compute warnings + age-adjusted assessment + refractive hint.
+  //
+  // Legacy (distance-only) entry point: still supported.
   void updateAcuity(vm.AcuityResult right, vm.AcuityResult left) {
-    current.right = _PseudoAcuity(right.logMAR);
-    current.left = _PseudoAcuity(left.logMAR);
+    // Treat as Distance if mode not specified.
+    updateAcuityModeAware(mode: vm.TestMode.distance, right: right, left: left);
+  }
 
-    final r = right.logMAR;
-    final l = left.logMAR;
-    current.warning = _buildWarning(r, l);
+  /// New: Mode-aware update. Call this from the test screen.
+  ///
+  /// Stores Distance/Near separately, keeps the "main" section (current.right/left)
+  /// pointing to Distance when present (or Near if Distance missing), and computes
+  /// warnings, age verdict, and refractive hints using BOTH tests when available.
+  void updateAcuityModeAware({
+    required vm.TestMode mode,
+    required vm.AcuityResult right,
+    required vm.AcuityResult left,
+  }) {
+    final r = _PseudoAcuity(right.logMAR);
+    final l = _PseudoAcuity(left.logMAR);
 
-    // Age classification & age-adjusted verdict
-    final age = current.age ?? current.face?.age;
-    final worst = (r >= l) ? r : l;
-    final diff = (r - l).abs();
+    if (mode == vm.TestMode.distance) {
+      current.distanceRight = r;
+      current.distanceLeft = l;
+    } else if (mode == vm.TestMode.near) {
+      current.nearRight = r;
+      current.nearLeft = l;
+    } else {
+      // if you ever add vm.TestMode.both, fall back to distance section
+      current.distanceRight = r;
+      current.distanceLeft = l;
+    }
 
-    final ageInfo = _ageClassAndThreshold(age);
-    current.ageGroupLabel = ageInfo.label;
-    current.ageAdjustedVerdict = _ageAdjustedVerdict(
-      worst,
-      diff,
-      ageInfo.passThresholdLogMAR,
-    );
+    // What should the primary section display?
+    if (current.distanceRight != null || current.distanceLeft != null) {
+      current.right = current.distanceRight;
+      current.left = current.distanceLeft;
+    } else {
+      current.right = current.nearRight;
+      current.left = current.nearLeft;
+    }
 
-    // Refractive hint based on patterns (distance-only approximation)
-    current.refractiveHint = _refractiveHint(worst, diff, age);
+    // Compute warnings, verdicts, and refractive hints
+    _recomputeAssessments();
   }
 
   /// If you ever need to clone/normalize the model for the report screen.
   static ReportData normalize(ReportData r) => r;
 
-  // ---------------- Business rules ----------------
+  /// Clear everything (use this for a full app restart, not for "next test")
+  void resetAll() {
+    current
+      ..name = null
+      ..age = null
+      ..gender = null
+      ..face = null
+      ..right = null
+      ..left = null
+      ..distanceRight = null
+      ..distanceLeft = null
+      ..nearRight = null
+      ..nearLeft = null
+      ..warning = null
+      ..ageGroupLabel = null
+      ..ageAdjustedVerdict = null
+      ..refractiveHint = null;
+  }
 
-  /// Warnings row (simple & clear, distance test only).
-  String _buildWarning(double rLogMar, double lLogMar) {
+  // ---------------- Derived assessments ----------------
+
+  void _recomputeAssessments() {
+    final age = current.age ?? current.face?.age;
+    final ageInfo = _ageClassAndThreshold(age);
+    current.ageGroupLabel = ageInfo.label;
+
+    // Worst (higher logMAR = worse) per mode
+    double? worstDist, worstNear;
+    double? diffDist, diffNear;
+
+    if (current.distanceRight != null || current.distanceLeft != null) {
+      final dr = current.distanceRight?.logMAR ?? double.negativeInfinity;
+      final dl = current.distanceLeft?.logMAR ?? double.negativeInfinity;
+      worstDist = _maxOrNull(dr, dl);
+      diffDist = _absDiffOrNull(
+        current.distanceRight?.logMAR,
+        current.distanceLeft?.logMAR,
+      );
+    }
+    if (current.nearRight != null || current.nearLeft != null) {
+      final nr = current.nearRight?.logMAR ?? double.negativeInfinity;
+      final nl = current.nearLeft?.logMAR ?? double.negativeInfinity;
+      worstNear = _maxOrNull(nr, nl);
+      diffNear = _absDiffOrNull(
+        current.nearRight?.logMAR,
+        current.nearLeft?.logMAR,
+      );
+    }
+
+    // Warning: consider either test; flag anisometropia if gap large in either mode
+    current.warning = _buildWarningCombined(
+      rDist: current.distanceRight?.logMAR,
+      lDist: current.distanceLeft?.logMAR,
+      rNear: current.nearRight?.logMAR,
+      lNear: current.nearLeft?.logMAR,
+    );
+
+    // Age-adjusted verdict: fail if the worst of either mode is below age norms
+    final overallWorst = _maxNonNull([worstDist, worstNear]);
+    if (overallWorst != null && overallWorst <= ageInfo.passThresholdLogMAR) {
+      current.ageAdjustedVerdict = 'Within normal range for age';
+    } else {
+      current.ageAdjustedVerdict = 'Refer (below age norms)';
+    }
+
+    // Refractive hint using BOTH tests when available
+    current.refractiveHint = _refractiveHintCombined(
+      worstDistance: worstDist,
+      worstNear: worstNear,
+      interEyeDiffDistance: diffDist,
+      interEyeDiffNear: diffNear,
+      age: age,
+    );
+  }
+
+  // ---- Warnings ----
+
+  String _buildWarningCombined({
+    double? rDist,
+    double? lDist,
+    double? rNear,
+    double? lNear,
+  }) {
     const double consultThreshold = 0.30; // ~20/40
     const double anisometropiaGap = 0.20; // ~2 ETDRS lines
 
-    if (rLogMar >= consultThreshold || lLogMar >= consultThreshold) {
-      return 'Consult an eye doctor for a detailed exam.';
+    bool consult = false;
+    bool anisometropia = false;
+
+    // Distance flags
+    if (rDist != null && rDist >= consultThreshold) consult = true;
+    if (lDist != null && lDist >= consultThreshold) consult = true;
+    if (rDist != null &&
+        lDist != null &&
+        (rDist - lDist).abs() >= anisometropiaGap) {
+      anisometropia = true;
     }
-    if ((rLogMar - lLogMar).abs() >= anisometropiaGap) {
+
+    // Near flags
+    if (rNear != null && rNear >= consultThreshold) consult = true;
+    if (lNear != null && lNear >= consultThreshold) consult = true;
+    if (rNear != null &&
+        lNear != null &&
+        (rNear - lNear).abs() >= anisometropiaGap) {
+      anisometropia = true;
+    }
+
+    if (consult) return 'Consult an eye doctor for a detailed exam.';
+    if (anisometropia)
       return 'Consider a professional eye exam (difference between eyes).';
-    }
     return 'Your eyes appear healthy with good vision.';
   }
 
   // ---- Age classification & thresholds ----
 
-  /// Age class + pass threshold for distance acuity (logMAR).
-  /// These are screening-style, not diagnostic. Tweak as you like.
   _AgeInfo _ageClassAndThreshold(int? age) {
     if (age == null) {
       // Use adult defaults if unknown
@@ -173,37 +298,92 @@ class ReportService {
     return const _AgeInfo('Older adult (60+)', 0.30); // ~20/40
   }
 
-  String _ageAdjustedVerdict(
-    double worstLogMAR,
-    double interEyeDiff,
-    double passThreshold,
-  ) {
-    if (worstLogMAR <= passThreshold) {
-      return 'Within normal range for age';
-    }
-    return 'Refer (below age norms)';
-  }
-
-  // ---- Refractive pattern hint (distance-only approximation) ----
-
-  /// Very simple hint based on distance acuity and age.
-  /// - Poor distance acuity (≥20/40) → likely short-sight (myopia).
-  /// - Big inter-eye gap → anisometropia/astigmatism risk.
-  /// - Age ≥45 with normal distance → near-vision difficulty common (presbyopia).
-  String _refractiveHint(double worstLogMAR, double interEyeDiff, int? age) {
-    const double myopiaCut = 0.30; // ~20/40
+  // ---- Refractive pattern hint (uses both tests when possible) ----
+  //
+  // Heuristics:
+  // - Distance worse, Near OK  -> likely Myopia
+  // - Near worse, Distance OK  -> <40: Hyperopia; >=40: Presbyopia
+  // - Both reduced             -> non-specific; advise full exam
+  // - Large inter-eye gap      -> mention anisometropia/astigmatism
+  String _refractiveHintCombined({
+    required double? worstDistance,
+    required double? worstNear,
+    required double? interEyeDiffDistance,
+    required double? interEyeDiffNear,
+    required int? age,
+  }) {
+    const double okCut = 0.20; // ~20/32 or better
+    const double myopiaCut = 0.30; // ~20/40 (distance reduced)
     const double bigGap = 0.20; // ~2 ETDRS lines
+    final a = age ?? 0;
 
-    if (interEyeDiff >= bigGap) {
+    final gapBig =
+        (interEyeDiffDistance != null && interEyeDiffDistance >= bigGap) ||
+        (interEyeDiffNear != null && interEyeDiffNear >= bigGap);
+
+    if (gapBig) {
       return 'Difference between eyes is notable — possible astigmatism or anisometropia.';
     }
-    if (worstLogMAR >= myopiaCut) {
+
+    // If only distance test available (legacy)
+    if (worstNear == null && worstDistance != null) {
+      if (worstDistance >= myopiaCut) {
+        return 'Likely short-sight (myopia) — distance vision reduced.';
+      }
+      if (a >= 45) {
+        return 'Distance is OK. If near reading is hard, age-related long-sight (presbyopia) is common.';
+      }
+      return 'No strong refractive pattern from distance screening alone.';
+    }
+
+    // If only near test available
+    if (worstDistance == null && worstNear != null) {
+      if (worstNear > okCut) {
+        return a >= 40
+            ? 'Near vision reduced with age — likely presbyopia.'
+            : 'Near vision reduced — possible long-sight (hyperopia).';
+      }
+      return 'Near vision within expected range.';
+    }
+
+    // Both available
+    final distBad = (worstDistance ?? 0) > okCut;
+    final nearBad = (worstNear ?? 0) > okCut;
+
+    if (distBad && !nearBad) {
       return 'Likely short-sight (myopia) — distance vision reduced.';
     }
-    if ((age ?? 0) >= 45) {
-      return 'Distance is OK. If near reading is hard, age-related long-sight (presbyopia) is common.';
+    if (!distBad && nearBad) {
+      return a >= 40
+          ? 'Likely presbyopia (age-related near focus).'
+          : 'Possible long-sight (hyperopia) — near vision reduced.';
     }
-    return 'No strong refractive pattern from distance screening alone.';
+    if (distBad && nearBad) {
+      return 'Reduced vision at both distances — please get a full exam.';
+    }
+    return 'Within expected range.';
+  }
+
+  // ---------------- Utilities ----------------
+
+  double? _maxOrNull(double a, double b) {
+    if (a == double.negativeInfinity && b == double.negativeInfinity)
+      return null;
+    return a > b ? a : b;
+  }
+
+  double? _maxNonNull(List<double?> xs) {
+    double? best;
+    for (final x in xs) {
+      if (x == null) continue;
+      if (best == null || x > best) best = x;
+    }
+    return best;
+  }
+
+  double? _absDiffOrNull(double? a, double? b) {
+    if (a == null || b == null) return null;
+    return (a - b).abs();
   }
 }
 
