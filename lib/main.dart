@@ -1,3 +1,4 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'screens/capture_screen.dart';
 import 'screens/acuity_test_screen.dart';
@@ -15,7 +16,8 @@ class EyesightApp extends StatelessWidget {
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
       routes: {
         '/': (_) => const CaptureScreen(),
-        '/test': (_) => const AcuityTestScreen(),
+        '/test': (_) => const AcuityTestScreen(), // existing
+        '/acuity': (_) => const AcuityTestScreen(), // <-- alias added
         '/report': (_) => const ReportScreen(),
       },
       builder: (context, child) => Banner(
