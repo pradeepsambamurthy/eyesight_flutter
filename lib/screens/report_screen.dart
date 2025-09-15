@@ -1,195 +1,141 @@
 // lib/screens/report_screen.dart
 import 'package:flutter/material.dart';
 import '../services/report_service.dart';
-import '../models/vision_models.dart' as vm; // for TestMode
 
-class ReportScreen extends StatelessWidget {
-  const ReportScreen({super.key});
+/// Content-only body to render inside the Report tab.
+/// Pulls values from ReportService.instance.current.
+class ReportBody extends StatelessWidget {
+  const ReportBody({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final r = ReportService.normalize(ReportService.instance.current);
+    final data = ReportService.instance.current;
 
-    // Figure out what the previous screen told us
-    final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    final completed =
-        args?['completed'] as vm.TestMode? ?? vm.TestMode.distance;
-    final nextMode = completed == vm.TestMode.distance
-        ? vm.TestMode.near
-        : vm.TestMode.distance;
+    final hasDistance = data.distanceRight != null || data.distanceLeft != null;
+    final hasNear = data.nearRight != null || data.nearLeft != null;
+    final hasAny = hasDistance || hasNear;
 
-    // Prefer typed-in age/gender, fall back to face estimation
-    final name = (r.name?.trim().isNotEmpty == true) ? r.name : '—';
-    final age = r.age ?? r.face?.age;
-    final gender = r.gender ?? r.face?.gender;
-    final glassesDetected = r.face?.wearingGlasses == true
-        ? 'Yes'
-        : 'No/Unknown';
+    if (!hasAny) {
+      return const Text(
+        'No report yet. Run a test to generate your report.',
+        style: TextStyle(color: Colors.white),
+      );
+    }
 
-    final hasDistance = r.hasDistance;
-    final hasNear = r.hasNear;
-    final bothDone = hasDistance && hasNear;
+    // Helper to safely show a value from the private _PseudoAcuity type.
+    String show(dynamic v) => v == null ? '—' : v.toString();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Your Report')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    Widget row(String label, String right, String left) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
         children: [
-          // Profile
-          Text('Profile', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Name: $name'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Age: ${age?.toString() ?? '—'}   •   Gender: ${gender ?? '—'}',
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Glasses detected in photo: $glassesDetected'),
-                  if (r.ageGroupLabel != null) ...[
-                    const SizedBox(height: 8),
-                    Text('Age group: ${r.ageGroupLabel}'),
-                  ],
-                ],
-              ),
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
+          Expanded(child: Text('Right: $right')),
+          Expanded(child: Text('Left:  $left')),
+        ],
+      ),
+    );
 
-          const SizedBox(height: 12),
-
-          // Visual Acuity (primary — shows Distance if present, else Near)
-          Text('Visual Acuity', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Right eye: ${r.right?.snellen ?? '—'} '
-                    '(${r.right == null ? '' : 'logMAR ${r.right!.logMAR.toStringAsFixed(2)}'})',
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Left eye : ${r.left?.snellen ?? '—'} '
-                    '(${r.left == null ? '' : 'logMAR ${r.left!.logMAR.toStringAsFixed(2)}'})',
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Overall: ${r.overallLabel}'),
-                  if (r.ageAdjustedVerdict != null) ...[
-                    const SizedBox(height: 4),
-                    Text('Age-adjusted: ${r.ageAdjustedVerdict}'),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // Optional: show both Distance & Near when available
-          if (bothDone) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Distance vs Near',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Distance — Right: ${r.distanceRight?.snellen ?? '—'}'
-                      '${r.distanceRight == null ? '' : ' (logMAR ${r.distanceRight!.logMAR.toStringAsFixed(2)})'}',
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Distance — Left : ${r.distanceLeft?.snellen ?? '—'}'
-                      '${r.distanceLeft == null ? '' : ' (logMAR ${r.distanceLeft!.logMAR.toStringAsFixed(2)})'}',
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Near — Right: ${r.nearRight?.snellen ?? '—'}'
-                      '${r.nearRight == null ? '' : ' (logMAR ${r.nearRight!.logMAR.toStringAsFixed(2)})'}',
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Near — Left : ${r.nearLeft?.snellen ?? '—'}'
-                      '${r.nearLeft == null ? '' : ' (logMAR ${r.nearLeft!.logMAR.toStringAsFixed(2)})'}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 12),
-
-          // Assessment
-          Text('Assessment', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(r.assessment),
-                  const SizedBox(height: 8),
-                  Text('Warnings: ${r.warning ?? 'None'}'),
-                  if (r.refractiveHint != null) ...[
-                    const SizedBox(height: 8),
-                    Text('Refractive hint: ${r.refractiveHint}'),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Primary action: go to the NEXT test
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.pushReplacementNamed(
+    Widget block(String title, Widget child) => Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(
                 context,
-                '/test',
-                arguments: {'mode': nextMode},
-              );
-            },
-            icon: const Icon(Icons.play_arrow),
-            label: Text(
-              nextMode == vm.TestMode.near
-                  ? 'Continue: Near Test'
-                  : 'Continue: Distance Test',
+              ).colorScheme.primaryContainer.withOpacity(.35),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
+            ),
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-
-          // Optional secondary: start over (clears saved results)
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () {
-              ReportService.instance.resetAll();
-              Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
-            },
-            icon: const Icon(Icons.restart_alt),
-            label: const Text('Start Over'),
-          ),
-
-          const SizedBox(height: 16),
-          const Text(
-            'Disclaimer: Screening only. Not a diagnosis. See an eye care professional for concerns.',
-            style: TextStyle(color: Colors.orange),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+            ),
+            child: child,
           ),
         ],
       ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Primary snapshot
+        block(
+          'Summary',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Overall: ${data.overallLabel}'),
+              const SizedBox(height: 4),
+              Text(data.assessment),
+              if (data.ageGroupLabel != null) ...[
+                const SizedBox(height: 6),
+                Text('Age Group: ${data.ageGroupLabel}'),
+              ],
+            ],
+          ),
+        ),
+
+        // Distance section
+        if (hasDistance)
+          block(
+            'Distance Acuity',
+            row(
+              'Distance',
+              show(data.distanceRight), // e.g. "20/40 (logMAR 0.30)"
+              show(data.distanceLeft),
+            ),
+          ),
+
+        // Near section
+        if (hasNear)
+          block(
+            'Near Acuity',
+            row('Near', show(data.nearRight), show(data.nearLeft)),
+          ),
+
+        // Guidance from ReportService
+        block(
+          'Assessment',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(data.ageAdjustedVerdict ?? '—'),
+              const SizedBox(height: 6),
+              Text(data.refractiveHint ?? '—'),
+              const SizedBox(height: 6),
+              Text(
+                data.warning ?? '—',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+        const Text(
+          'Disclaimer: Screening only. Not a diagnosis. See an eye care professional for concerns.',
+          style: TextStyle(color: Color(0xFFA85500)),
+        ),
+      ],
     );
   }
 }

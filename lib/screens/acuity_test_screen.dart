@@ -1,5 +1,4 @@
 // lib/screens/acuity_test_screen.dart
-import 'dart:io';
 import 'package:flutter/material.dart';
 
 // Namespaced models (enums + result types)
@@ -12,7 +11,17 @@ import '../services/compliance_service.dart';
 import '../services/report_service.dart';
 
 class AcuityTestScreen extends StatefulWidget {
-  const AcuityTestScreen({super.key});
+  const AcuityTestScreen({super.key, this.onCompleted});
+
+  /// Optional: parent (e.g., AppShell) can listen for completion to switch tabs
+  /// and/or store results immediately. If not provided, we navigate to /report.
+  final void Function({
+    required vm.TestMode mode,
+    required vm.AcuityResult right,
+    required vm.AcuityResult left,
+  })?
+  onCompleted;
+
   @override
   State<AcuityTestScreen> createState() => _AcuityTestScreenState();
 }
@@ -20,7 +29,7 @@ class AcuityTestScreen extends StatefulWidget {
 class _AcuityTestScreenState extends State<AcuityTestScreen> {
   final _acuity = AcuityService.instance;
   final _calib = CalibrationService.instance;
-  final _comp = ComplianceService.instance;
+  final _comp = ComplianceService.instance; // reserved for future use
 
   // Which test are we running: distance or near?
   late vm.TestMode _mode;
@@ -31,8 +40,8 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
   bool _started = false;
 
   String get _introStatus => _mode == vm.TestMode.near
-      ? 'Hold device ~40cm/16in away. Cover LEFT eye.'
-      : 'Stand ~3m/10ft from screen. Cover LEFT eye.';
+      ? 'Hold device ~40 cm / 16 in away. Cover LEFT eye.'
+      : 'Stand ~3 m / 10 ft from screen. Cover LEFT eye.';
 
   String _status = '';
 
@@ -84,48 +93,38 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
       _r = res;
       _eye = vm.EyeSide.left;
       _status = _mode == vm.TestMode.near
-          ? 'Now cover RIGHT eye. Keep ~40cm/16in distance.'
-          : 'Now cover RIGHT eye. Keep 3m/10ft distance.';
+          ? 'Now cover RIGHT eye. Keep ~40 cm / 16 in distance.'
+          : 'Now cover RIGHT eye. Keep 3 m / 10 ft distance.';
       await _acuity.start(eye: _eye, calibration: _cal!);
       setState(() {});
-    } else {
-      _l = res;
-
-      // Save the results tagged by mode so the report can compare distance vs near
-      ReportService.instance.updateAcuityModeAware(
-        mode: _mode,
-        right: _r ?? const vm.AcuityResult(0.3),
-        left: _l ?? const vm.AcuityResult(0.3),
-      );
-
-      if (mounted) {
-        // Tell the report which test just completed so it can offer "Continue: <next>"
-        Navigator.pushReplacementNamed(
-          context,
-          '/report',
-          arguments: {'completed': _mode},
-        );
-      }
+      return;
     }
-  }
 
-  // Optional compliance check (not wired to UI yet)
-  // ignore: unused_element
-  Future<void> _checkCompliance(File lastFrame) async {
-    if (_cal == null) return;
-    final flags = await _comp.analyzeFrame(
-      lastFrame,
-      _eye,
-      targetDistanceCm: _cal!.targetDistanceCm,
+    // Finished LEFT eye
+    _l = res;
+
+    // Persist results by mode so the report can compare distance vs near
+    ReportService.instance.updateAcuityModeAware(
+      mode: _mode,
+      right: _r ?? const vm.AcuityResult(0.3),
+      left: _l ?? const vm.AcuityResult(0.3),
     );
-    if (flags == null) return;
-    if (!flags.goodLighting) setState(() => _status = 'Increase room lighting');
-    if (!flags.distanceLocked)
-      setState(() => _status = 'Please keep the same distance');
-    if (_eye == vm.EyeSide.right && !flags.leftEyeCovered)
-      setState(() => _status = 'Cover LEFT eye');
-    if (_eye == vm.EyeSide.left && !flags.rightEyeCovered)
-      setState(() => _status = 'Cover RIGHT eye');
+
+    // Notify parent if it wants to handle navigation/tab switch
+    final right = _r ?? const vm.AcuityResult(0.3);
+    final left = _l ?? const vm.AcuityResult(0.3);
+    if (widget.onCompleted != null) {
+      widget.onCompleted!(mode: _mode, right: right, left: left);
+      return;
+    }
+
+    // Default behavior: open the Report tab via '/report'
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      '/report',
+      arguments: {'completed': _mode},
+    );
   }
 
   @override

@@ -23,6 +23,10 @@ class ReportFace {
   final bool? wearingGlasses; // detected from photo (optional)
 
   const ReportFace({this.age, this.gender, this.wearingGlasses});
+
+  Map<String, dynamic> toMap() =>
+      {'age': age, 'gender': gender, 'wearingGlasses': wearingGlasses}
+        ..removeWhere((_, v) => v == null);
 }
 
 class ReportData {
@@ -35,7 +39,7 @@ class ReportData {
   ReportFace? face;
 
   // ------------------------------------------------------------------
-  // Primary section shown in your current UI (kept for backward-compat)
+  // Primary section shown in current UI (kept for backward-compat)
   // By default we show the Distance results here if they exist; else Near.
   _PseudoAcuity? right;
   _PseudoAcuity? left;
@@ -70,6 +74,22 @@ class ReportData {
     if (r == null) return l;
     return r.logMAR >= l.logMAR ? r : l;
   }
+
+  /// For saving/sharing: convert to a simple map (no private types).
+  Map<String, dynamic> toMapForStorage() => {
+    'name': name,
+    'age': age ?? face?.age,
+    'gender': gender ?? face?.gender,
+    'face': face?.toMap(),
+    'distanceRight': distanceRight?.snellen,
+    'distanceLeft': distanceLeft?.snellen,
+    'nearRight': nearRight?.snellen,
+    'nearLeft': nearLeft?.snellen,
+    'warning': warning,
+    'ageGroup': ageGroupLabel,
+    'ageVerdict': ageAdjustedVerdict,
+    'refractiveHint': refractiveHint,
+  }..removeWhere((_, v) => v == null);
 }
 
 class ReportService {
@@ -106,7 +126,7 @@ class ReportService {
 
     try {
       final g = face?.gender ?? face?.sex;
-      if (g is String && g.trim().isNotEmpty) gender = g;
+      if (g is String && g.trim().isNotEmpty) gender = g.trim();
     } catch (_) {}
 
     try {
@@ -227,7 +247,7 @@ class ReportService {
       lNear: current.nearLeft?.logMAR,
     );
 
-    // Age-adjusted verdict: fail if the worst of either mode is below age norms
+    // Age-adjusted verdict: pass if the worst of either mode is at/above age norms
     final overallWorst = _maxNonNull([worstDist, worstNear]);
     if (overallWorst != null && overallWorst <= ageInfo.passThresholdLogMAR) {
       current.ageAdjustedVerdict = 'Within normal range for age';
@@ -278,8 +298,9 @@ class ReportService {
     }
 
     if (consult) return 'Consult an eye doctor for a detailed exam.';
-    if (anisometropia)
+    if (anisometropia) {
       return 'Consider a professional eye exam (difference between eyes).';
+    }
     return 'Your eyes appear healthy with good vision.';
   }
 
@@ -367,8 +388,9 @@ class ReportService {
   // ---------------- Utilities ----------------
 
   double? _maxOrNull(double a, double b) {
-    if (a == double.negativeInfinity && b == double.negativeInfinity)
+    if (a == double.negativeInfinity && b == double.negativeInfinity) {
       return null;
+    }
     return a > b ? a : b;
   }
 
@@ -389,6 +411,8 @@ class ReportService {
 
 class _AgeInfo {
   final String label;
+
+  /// Maximum acceptable logMAR (lower/equal is passing).
   final double passThresholdLogMAR;
   const _AgeInfo(this.label, this.passThresholdLogMAR);
 }
