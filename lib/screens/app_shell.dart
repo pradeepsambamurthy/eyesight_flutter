@@ -1,6 +1,7 @@
 // lib/screens/app_shell.dart
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -10,7 +11,8 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
 // App services
-import 'package:eyesight_flutter/services/report_service.dart';
+import 'package:eyesight_flutter/services/report_service.dart'
+    show ReportService;
 
 // Screens / widgets
 import 'acuity_test_screen.dart';
@@ -39,7 +41,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
     _tab = TabController(length: 5, vsync: this);
     if (widget.initialTab != null) _tab.index = widget.initialTab!.index;
 
-    // Close login overlay when auth changes to a signed-in user
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted) return;
       if (user != null && _showLogin) {
@@ -98,14 +99,14 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
               child: PopupMenuButton<String>(
                 tooltip: user.email ?? 'Account',
                 icon: const Icon(Icons.account_circle, color: Colors.white),
-                itemBuilder: (context) => const [
+                itemBuilder: (context) => [
                   PopupMenuItem(
                     value: 'email',
                     enabled: false,
-                    child: Text('Signed in'),
+                    child: Text(user.email ?? 'Signed in'),
                   ),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                     value: 'signout',
                     child: ListTile(
                       dense: true,
@@ -167,7 +168,7 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
           // 1) Background image
           Positioned.fill(
             child: Image.asset(
-              'assets/images/eye_bg.png', // ensure in pubspec
+              'assets/images/eye_bg.png',
               fit: BoxFit.cover,
               alignment: Alignment.center,
             ),
@@ -191,7 +192,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
           Positioned.fill(
             child: TabBarView(
               controller: _tab,
-              // Optional: prevent swipe into Test when logged out
               physics: FirebaseAuth.instance.currentUser == null
                   ? const NeverScrollableScrollPhysics()
                   : null,
@@ -215,7 +215,7 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
                   },
                 ),
                 const _AboutContent(),
-                const _TestGate(),
+                const _TestGate(), // <- gate now asks for Name/Age first
                 _ReportTab(onDownloadPdf: _downloadReportPdf),
               ],
             ),
@@ -269,7 +269,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
                           const SizedBox(height: 8),
                           const Divider(height: 1),
                           const SizedBox(height: 16),
-                          // This widget must exist in login_screen.dart
                           LoginFormEmbedded(
                             onSuccess: () {
                               setState(() => _showLogin = false);
@@ -364,7 +363,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
               pw.Divider(),
               pw.SizedBox(height: 8),
 
-              // Profile
               block('Profile', [
                 kv('Name', data.name ?? '—'),
                 kv('Age', (data.age ?? data.face?.age)?.toString() ?? '—'),
@@ -376,26 +374,22 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
                   ),
               ]),
 
-              // Summary (primary snapshot)
               block('Summary', [
                 kv('Overall', data.overallLabel),
                 kv('Assessment', data.assessment),
                 kv('Age Group', data.ageGroupLabel ?? '—'),
               ]),
 
-              // Distance
               block('Distance Acuity', [
                 kv('Right', show(data.distanceRight)),
                 kv('Left', show(data.distanceLeft)),
               ]),
 
-              // Near
               block('Near Acuity', [
                 kv('Right', show(data.nearRight)),
                 kv('Left', show(data.nearLeft)),
               ]),
 
-              // Guidance
               block('Assessment & Guidance', [
                 kv('Age-adjusted verdict', data.ageAdjustedVerdict ?? '—'),
                 kv('Refractive hint', data.refractiveHint ?? '—'),
@@ -479,8 +473,7 @@ class _HomeContent extends StatelessWidget {
             Text(
               'Use this app to quickly screen visual acuity at distance and near. '
               'While this is not a medical diagnosis, it helps flag potential issues '
-              '(e.g., myopia, presbyopia, large inter-eye differences) so you can decide '
-              'whether to seek a professional exam.',
+              '(e.g., myopia, presbyopia, large inter-eye differences).',
               style: bodyStyle,
             ),
             const SizedBox(height: 24),
@@ -538,18 +531,9 @@ class _HowToContent extends StatelessWidget {
           children: [
             Text('How to Use This Test', style: titleStyle),
             const SizedBox(height: 12),
-            Text(
-              'Best done with a helper at ~10 ft (3 m). The helper advances screens while the tested person reads letters.',
-              style: bodyStyle,
-            ),
-            const SizedBox(height: 20),
-            Text('Quick Steps', style: titleStyle?.copyWith(fontSize: 22)),
-            dot('Place the device at eye level; measure ~10 ft to the viewer.'),
-            dot(
-              'Test one eye at a time (cover the other eye without pressure).',
-            ),
+            dot('Best with a helper at ~10 ft (3 m).'),
+            dot('Test one eye at a time; cover the other without pressure.'),
             dot('Read the smallest line you can; the helper records results.'),
-            dot('Optionally repeat at near (arm’s length).'),
             const SizedBox(height: 24),
             FilledButton.icon(
               icon: const Icon(Icons.play_arrow),
@@ -607,23 +591,18 @@ class _AboutContent extends StatelessWidget {
             const SizedBox(height: 12),
             info(
               'Distance & Near Acuity',
-              'We measure how small you can read at distance and near and map it to a Snellen/logMAR label.',
+              'We map how small you can read to Snellen/logMAR labels.',
               Icons.format_size,
             ),
             info(
               'Age-Adjusted Hints',
-              'We compare results with age-appropriate thresholds to suggest patterns like myopia or presbyopia.',
+              'We compare with age thresholds for patterns like myopia/presbyopia.',
               Icons.rule,
             ),
             info(
               'Inter-Eye Differences',
-              'Large differences between right and left eyes are flagged (possible astigmatism/anisometropia).',
+              'Large differences between eyes are flagged.',
               Icons.compare_arrows,
-            ),
-            info(
-              'Privacy',
-              'Signed-in users save reports to their own account; security rules restrict access.',
-              Icons.privacy_tip_outlined,
             ),
           ],
         ),
@@ -633,8 +612,19 @@ class _AboutContent extends StatelessWidget {
 }
 
 // ---------------- Test Gate ----------------
-class _TestGate extends StatelessWidget {
+// If signed in but Name/Age missing, show demographics form before the test.
+class _TestGate extends StatefulWidget {
   const _TestGate();
+
+  @override
+  State<_TestGate> createState() => _TestGateState();
+}
+
+class _TestGateState extends State<_TestGate> {
+  bool _needsDemo() {
+    final r = ReportService.instance.current;
+    return (r.name == null || r.name!.trim().isEmpty) || (r.age == null);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -645,11 +635,123 @@ class _TestGate extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         final user = snap.data;
-        if (user == null) {
-          return const _LoginRequiredCard();
+        if (user == null) return const _LoginRequiredCard();
+
+        if (_needsDemo()) {
+          return _DemographicsCard(
+            onSaved: (name, age) {
+              ReportService.instance.setDemographics(name: name, age: age);
+              setState(() {}); // refresh; next build will show test
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Saved. You can start the test now.'),
+                ),
+              );
+            },
+          );
         }
+
         return const _TestContent();
       },
+    );
+  }
+}
+
+class _DemographicsCard extends StatefulWidget {
+  const _DemographicsCard({required this.onSaved});
+  final void Function(String name, int age) onSaved;
+
+  @override
+  State<_DemographicsCard> createState() => _DemographicsCardState();
+}
+
+class _DemographicsCardState extends State<_DemographicsCard> {
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _age = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _age.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 700),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Card(
+            color: Colors.white,
+            elevation: 0,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _form,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Before we begin',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Please enter your name and age for the report.',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _name,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _age,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Age',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) {
+                        final n = int.tryParse((v ?? '').trim());
+                        if (n == null || n <= 0 || n > 120) {
+                          return 'Enter a valid age';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: const Text('Save & Start Test'),
+                      onPressed: () {
+                        if (_form.currentState?.validate() != true) return;
+                        widget.onSaved(
+                          _name.text.trim(),
+                          int.parse(_age.text.trim()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -717,8 +819,7 @@ class _ReportTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final titleStyle = text.titleLarge?.copyWith(
+    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
       color: Colors.white,
       fontWeight: FontWeight.w700,
     );
@@ -742,13 +843,10 @@ class _ReportTab extends StatelessWidget {
                     child: Text('Your Report', style: titleStyle),
                   ),
                   const SizedBox(height: 10),
-
-                  // Embed the content-only body (not a Scaffold)
                   const Padding(
                     padding: EdgeInsets.all(12),
-                    child: ReportBody(),
+                    child: ReportBody(), // your existing content-only widget
                   ),
-
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerRight,

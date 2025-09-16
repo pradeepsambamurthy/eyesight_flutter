@@ -1,24 +1,31 @@
+// lib/screens/login_screen.dart
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Standalone login page (if you navigate to /login directly).
+// Google (mobile)
+import 'package:google_sign_in/google_sign_in.dart' as g;
+
+// Facebook (mobile)
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart' as fba;
+
+// Apple (mobile)
+import 'package:sign_in_with_apple/sign_in_with_apple.dart' as apple;
+
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Sign in / Sign up')),
+    return const Scaffold(
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: LoginFormEmbedded(
-              onSuccess: () {
-                // After login, go back into the app. You can choose where:
-                Navigator.pop(context); // closes this page
-              },
+        child: SizedBox(
+          width: 420,
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: LoginFormEmbedded(),
             ),
           ),
         ),
@@ -27,208 +34,217 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-/// Embedded login/sign-up form used by the shell overlay.
-/// Calls [onSuccess] when authenticated so parents can dismiss/navigate.
 class LoginFormEmbedded extends StatefulWidget {
-  const LoginFormEmbedded({super.key, required this.onSuccess});
-  final VoidCallback onSuccess;
+  const LoginFormEmbedded({super.key, this.onSuccess});
+  final VoidCallback? onSuccess;
 
   @override
   State<LoginFormEmbedded> createState() => _LoginFormEmbeddedState();
 }
 
-enum _AuthMode { signIn, signUp }
-
 class _LoginFormEmbeddedState extends State<LoginFormEmbedded> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
-  final _pass2 = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-
-  _AuthMode _mode = _AuthMode.signIn;
   bool _busy = false;
-  String? _error;
-  bool _acceptTerms = false;
-
-  void _switchMode(_AuthMode m) => setState(() {
-    _mode = m;
-    _error = null;
-  });
-
-  Future<void> _handleSubmit() async {
-    if (_formKey.currentState?.validate() != true) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      final email = _email.text.trim();
-      final password = _pass.text;
-
-      if (_mode == _AuthMode.signIn) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      } else {
-        if (!_acceptTerms) {
-          throw FirebaseAuthException(
-            code: 'terms-not-accepted',
-            message: 'Please accept Terms to continue.',
-          );
-        }
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-        await FirebaseAuth.instance.currentUser?.sendEmailVerification();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Verification email sent')),
-          );
-        }
-      }
-
-      if (mounted) widget.onSuccess(); // notify parent (shell or page)
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message ?? e.code);
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _resetPassword() async {
-    final email = _email.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      setState(() => _error = 'Enter your email above first.');
-      return;
-    }
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Password reset sent')));
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message ?? e.code);
-    }
-  }
 
   @override
   void dispose() {
     _email.dispose();
     _pass.dispose();
-    _pass2.dispose();
     super.dispose();
   }
 
+  Future<void> _withBusy(Future<void> Function() fn) async {
+    if (!mounted) return;
+    setState(() => _busy = true);
+    try {
+      await fn();
+      widget.onSuccess?.call();
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? e.code)));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Auth error: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // ---------- Email / password ----------
+  Future<void> _signInEmail() async => _withBusy(() async {
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: _email.text.trim(),
+      password: _pass.text,
+    );
+  });
+
+  Future<void> _signUpEmail() async => _withBusy(() async {
+    await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: _email.text.trim(),
+      password: _pass.text,
+    );
+  });
+
+  // ---------- Google ----------
+  Future<void> _signInGoogle() async => _withBusy(() async {
+    final auth = FirebaseAuth.instance;
+
+    if (kIsWeb) {
+      final provider = GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+      return;
+    }
+
+    // Android/iOS
+    final googleUser = await g.GoogleSignIn().signIn();
+    if (googleUser == null) throw Exception('Google sign-in canceled.');
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+    await auth.signInWithCredential(credential);
+  });
+
+  // ---------- Facebook ----------
+  Future<void> _signInFacebook() async => _withBusy(() async {
+    final auth = FirebaseAuth.instance;
+
+    if (kIsWeb) {
+      final provider = FacebookAuthProvider();
+      await auth.signInWithPopup(provider);
+      return;
+    }
+
+    // Android/iOS via native SDK
+    final result = await fba.FacebookAuth.instance.login();
+    if (result.status != fba.LoginStatus.success) {
+      throw Exception('Facebook sign-in failed: ${result.status}');
+    }
+    final accessToken = result.accessToken!;
+    final credential = FacebookAuthProvider.credential(accessToken.tokenString);
+    await auth.signInWithCredential(credential);
+  });
+
+  // ---------- Apple ----------
+  bool get _appleAvailableOnThisPlatform {
+    // Show Apple button on Web (Firebase popup) and on iOS/macOS builds
+    if (kIsWeb) return true;
+    final p = defaultTargetPlatform;
+    return p == TargetPlatform.iOS || p == TargetPlatform.macOS;
+  }
+
+  Future<void> _signInApple() async => _withBusy(() async {
+    final auth = FirebaseAuth.instance;
+
+    if (kIsWeb) {
+      // Web uses generic OAuth provider
+      final provider = OAuthProvider('apple.com');
+      await auth.signInWithPopup(provider);
+      return;
+    }
+
+    // iOS/macOS native
+    final appleId = await apple.SignInWithApple.getAppleIDCredential(
+      scopes: [
+        apple.AppleIDAuthorizationScopes.email,
+        apple.AppleIDAuthorizationScopes.fullName,
+      ],
+    );
+    final oauthCredential = OAuthProvider('apple.com').credential(
+      idToken: appleId.identityToken,
+      accessToken: appleId.authorizationCode,
+    );
+    await auth.signInWithCredential(oauthCredential);
+  });
+
   @override
   Widget build(BuildContext context) {
-    final isSignUp = _mode == _AuthMode.signUp;
+    final btnStyle = ElevatedButton.styleFrom(
+      minimumSize: const Size.fromHeight(44),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
 
-    return Form(
-      key: _formKey,
+    return AbsorbPointer(
+      absorbing: _busy,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Mode toggle
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ToggleButtons(
-              isSelected: [!isSignUp, isSignUp],
-              onPressed: (i) =>
-                  _switchMode(i == 0 ? _AuthMode.signIn : _AuthMode.signUp),
-              children: const [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('Sign In'),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('Sign Up'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
+          const Text('Sign in', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
 
-          // Email
-          TextFormField(
+          TextField(
             controller: _email,
             decoration: const InputDecoration(
               labelText: 'Email',
               border: OutlineInputBorder(),
             ),
-            keyboardType: TextInputType.emailAddress,
-            validator: (v) =>
-                (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
           ),
-          const SizedBox(height: 12),
-
-          // Password
-          TextFormField(
+          const SizedBox(height: 10),
+          TextField(
             controller: _pass,
+            obscureText: true,
             decoration: const InputDecoration(
               labelText: 'Password',
               border: OutlineInputBorder(),
             ),
-            obscureText: true,
-            validator: (v) {
-              if (v == null || v.length < 6) return 'Min 6 characters';
-              return null;
-            },
           ),
+          const SizedBox(height: 10),
 
-          if (isSignUp) ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _pass2,
-              decoration: const InputDecoration(
-                labelText: 'Confirm password',
-                border: OutlineInputBorder(),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: _signInEmail,
+                  child: _busy
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sign in'),
+                ),
               ),
-              obscureText: true,
-              validator: (v) =>
-                  (v != _pass.text) ? 'Passwords do not match' : null,
-            ),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              value: _acceptTerms,
-              onChanged: (v) => setState(() => _acceptTerms = v ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text(
-                'I accept the Terms of Service & Privacy Policy',
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _signUpEmail,
+                  child: const Text('Create account'),
+                ),
               ),
-            ),
-          ],
-
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-          ],
+            ],
+          ),
 
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _busy ? null : _handleSubmit,
-            child: _busy
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(isSignUp ? 'Create Account' : 'Continue'),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Text('Or continue with', textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+
+          ElevatedButton.icon(
+            style: btnStyle,
+            onPressed: _signInGoogle,
+            icon: const Icon(Icons.g_mobiledata),
+            label: const Text('Google'),
           ),
-          if (!isSignUp) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: _busy ? null : _resetPassword,
-              child: const Text('Forgot password?'),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            style: btnStyle,
+            onPressed: _signInFacebook,
+            icon: const Icon(Icons.facebook),
+            label: const Text('Facebook'),
+          ),
+          const SizedBox(height: 8),
+          if (_appleAvailableOnThisPlatform)
+            ElevatedButton.icon(
+              style: btnStyle,
+              onPressed: _signInApple,
+              icon: const Icon(Icons.apple),
+              label: const Text('Apple'),
             ),
-          ],
         ],
       ),
     );
