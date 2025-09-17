@@ -10,11 +10,10 @@ class CaptureScreen extends StatefulWidget {
 }
 
 class _CaptureScreenState extends State<CaptureScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _ageCtrl = TextEditingController();
-
-  String? _gender; // "Male" / "Female" / "Other" / null
-  final _formKey = GlobalKey<FormState>();
+  String? _gender; // 'Female' | 'Male' | 'Other / Prefer not to say'
 
   @override
   void dispose() {
@@ -23,91 +22,86 @@ class _CaptureScreenState extends State<CaptureScreen> {
     super.dispose();
   }
 
-  void _startTest() {
-    // Gather and normalize inputs
+  void _saveAndStart() {
+    if (!_formKey.currentState!.validate()) return;
+
     final name = _nameCtrl.text.trim();
     final age = int.tryParse(_ageCtrl.text.trim());
-    final gender = _gender;
+    final gender = _gender; // may be null
 
-    // Save demographics to shared report service
     ReportService.instance.setDemographics(
       name: name.isEmpty ? null : name,
       age: age,
       gender: gender,
     );
 
-    // Navigate to your test route (ensure this route exists in MaterialApp routes)
-    Navigator.pushNamed(context, '/test');
+    // Go to the acuity test screen
+    Navigator.of(context).pushReplacementNamed('/test');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Start / Profile')),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Name (optional)',
-                border: OutlineInputBorder(),
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _ageCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Age (years, optional)',
-                border: OutlineInputBorder(),
-                helperText: 'Leave blank if unknown',
-              ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return null; // optional
-                final n = int.tryParse(v.trim());
-                if (n == null || n < 1 || n > 120) {
-                  return 'Enter a valid age (1–120) or leave blank';
-                }
-                return null;
-              },
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _gender,
-              items: const [
-                DropdownMenuItem(value: 'Male', child: Text('Male')),
-                DropdownMenuItem(value: 'Female', child: Text('Female')),
-                DropdownMenuItem(
-                  value: 'Other',
-                  child: Text('Other / Prefer not to say'),
+      appBar: AppBar(title: const Text('Before we begin')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Please enter your name, age, and gender for the report.',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _ageCtrl,
+                      decoration: const InputDecoration(labelText: 'Age'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null; // optional
+                        return int.tryParse(v) == null ? 'Enter a valid number' : null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _gender,
+                      decoration: const InputDecoration(labelText: 'Gender'),
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(value: 'Female', child: Text('Female')),
+                        DropdownMenuItem(value: 'Male', child: Text('Male')),
+                        DropdownMenuItem(
+                          value: 'Other / Prefer not to say',
+                          child: Text('Other / Prefer not to say'),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _gender = v),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: _saveAndStart,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Save & Start Test'),
+                    ),
+                  ],
                 ),
-              ],
-              decoration: const InputDecoration(
-                labelText: 'Gender (optional)',
-                border: OutlineInputBorder(),
               ),
-              onChanged: (val) => setState(() => _gender = val),
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: () {
-                if (_formKey.currentState?.validate() != true) return;
-                _startTest();
-              },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start Visual Acuity Test'),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tip: You can wear your usual glasses if you normally use them.',
-              style: TextStyle(color: Colors.black54),
-            ),
-          ],
+          ),
         ),
       ),
     );

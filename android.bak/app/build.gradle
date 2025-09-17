@@ -1,21 +1,22 @@
-// android/app/build.gradle  (Groovy, new Flutter plugin style)
+// android/app/build.gradle  (Groovy)
 
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'dev.flutter.flutter-gradle-plugin'   // <-- replaces the old "apply from: flutter.gradle"
+    id 'dev.flutter.flutter-gradle-plugin'
+    id 'com.google.gms.google-services'   // Google services plugin (version declared in project build.gradle.kts)
 }
 
 android {
-    namespace 'com.example.eyesight_flutter'   // change to your package if different
-    compileSdk 36
+    namespace 'com.example.eyesight_flutter'     // change if your package differs
+    compileSdkVersion 34                        
 
     defaultConfig {
-        applicationId 'com.example.eyesight_flutter'
+        applicationId "com.example.eyesight_flutter"
         minSdkVersion flutter.minSdkVersion
-        targetSdk 36
+        targetSdkVersion 34
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         multiDexEnabled true
     }
 
@@ -34,9 +35,13 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
 }
 
-// Points Flutter tooling at your module
 flutter {
     source '../..'
 }

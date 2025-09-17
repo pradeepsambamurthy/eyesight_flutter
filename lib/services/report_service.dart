@@ -19,7 +19,7 @@ class _PseudoAcuity {
 /// Minimal face summary the report needs (decoupled from any ML service type).
 class ReportFace {
   final int? age; // estimated or user-provided
-  final String? gender; // "Male"/"Female"/"—"
+  final String? gender; // "Male"/"Female"/"Other"/"—"
   final bool? wearingGlasses; // detected from photo (optional)
 
   const ReportFace({this.age, this.gender, this.wearingGlasses});
@@ -58,10 +58,22 @@ class ReportData {
   String? ageAdjustedVerdict; // e.g., "Within normal range for age"
   String? refractiveHint; // e.g., "Likely short-sight (myopia)"
 
-  // Convenience getters for UI
+  // -------- Convenience getters for UI / PDF (string-safe) --------
   String get overallLabel => _worst?.snellen ?? '—';
   String get assessment =>
       'Right: ${right?.snellen ?? '—'}  •  Left: ${left?.snellen ?? '—'}';
+
+  String? get rightSnellen => right?.snellen;
+  String? get leftSnellen => left?.snellen;
+  String? get distanceRightSnellen => distanceRight?.snellen;
+  String? get distanceLeftSnellen => distanceLeft?.snellen;
+  String? get nearRightSnellen => nearRight?.snellen;
+  String? get nearLeftSnellen => nearLeft?.snellen;
+
+  int? get resolvedAge => age ?? face?.age;
+  String get resolvedGender => gender ?? face?.gender ?? '—';
+  String get demographicsLine =>
+      'Age: ${resolvedAge?.toString() ?? '—'}  •  Gender: $resolvedGender';
 
   bool get hasDistance => distanceRight != null || distanceLeft != null;
   bool get hasNear => nearRight != null || nearLeft != null;
@@ -78,8 +90,8 @@ class ReportData {
   /// For saving/sharing: convert to a simple map (no private types).
   Map<String, dynamic> toMapForStorage() => {
     'name': name,
-    'age': age ?? face?.age,
-    'gender': gender ?? face?.gender,
+    'age': resolvedAge,
+    'gender': resolvedGender == '—' ? null : resolvedGender,
     'face': face?.toMap(),
     'distanceRight': distanceRight?.snellen,
     'distanceLeft': distanceLeft?.snellen,
@@ -100,18 +112,36 @@ class ReportService {
 
   // ---------------- Profile / Demographics ----------------
 
+  String? _normalizeGender(String? g) {
+    if (g == null) return null;
+    final s = g.trim().toLowerCase();
+    if (s.isEmpty) return null;
+    if (s.startsWith('m')) return 'Male';
+    if (s.startsWith('f')) return 'Female';
+    const others = {
+      'other',
+      'nonbinary',
+      'non-binary',
+      'nb',
+      'unspecified',
+      'prefer not to say'
+    };
+    if (others.contains(s)) return 'Other';
+    return g.trim()[0].toUpperCase() + g.trim().substring(1);
+  }
+
   /// Called from your capture screen’s text fields.
   void setDemographics({String? name, int? age, String? gender}) {
     current.name = (name == null || name.trim().isEmpty) ? null : name.trim();
     current.age = age;
-    current.gender = gender;
+    current.gender = _normalizeGender(gender);
   }
 
   /// Backwards-compat setters if you call them separately.
   void updateName(String? v) =>
       current.name = (v == null || v.trim().isEmpty) ? null : v.trim();
   void updateAge(int? v) => current.age = v;
-  void updateGender(String? v) => current.gender = v;
+  void updateGender(String? v) => current.gender = _normalizeGender(v);
 
   /// Accept any “face summary” object and map it to our `ReportFace`.
   void updateFaceSummary(dynamic face) {
@@ -126,7 +156,7 @@ class ReportService {
 
     try {
       final g = face?.gender ?? face?.sex;
-      if (g is String && g.trim().isNotEmpty) gender = g.trim();
+      if (g is String) gender = _normalizeGender(g);
     } catch (_) {}
 
     try {
@@ -149,11 +179,7 @@ class ReportService {
     updateAcuityModeAware(mode: vm.TestMode.distance, right: right, left: left);
   }
 
-  /// New: Mode-aware update. Call this from the test screen.
-  ///
-  /// Stores Distance/Near separately, keeps the "main" section (current.right/left)
-  /// pointing to Distance when present (or Near if Distance missing), and computes
-  /// warnings, age verdict, and refractive hints using BOTH tests when available.
+  /// New: Mode-aware update.
   void updateAcuityModeAware({
     required vm.TestMode mode,
     required vm.AcuityResult right,
@@ -169,7 +195,6 @@ class ReportService {
       current.nearRight = r;
       current.nearLeft = l;
     } else {
-      // if you ever add vm.TestMode.both, fall back to distance section
       current.distanceRight = r;
       current.distanceLeft = l;
     }
@@ -183,14 +208,13 @@ class ReportService {
       current.left = current.nearLeft;
     }
 
-    // Compute warnings, verdicts, and refractive hints
     _recomputeAssessments();
   }
 
   /// If you ever need to clone/normalize the model for the report screen.
   static ReportData normalize(ReportData r) => r;
 
-  /// Clear everything (use this for a full app restart, not for "next test")
+  /// Clear everything.
   void resetAll() {
     current
       ..name = null
@@ -319,13 +343,7 @@ class ReportService {
     return const _AgeInfo('Older adult (60+)', 0.30); // ~20/40
   }
 
-  // ---- Refractive pattern hint (uses both tests when possible) ----
-  //
-  // Heuristics:
-  // - Distance worse, Near OK  -> likely Myopia
-  // - Near worse, Distance OK  -> <40: Hyperopia; >=40: Presbyopia
-  // - Both reduced             -> non-specific; advise full exam
-  // - Large inter-eye gap      -> mention anisometropia/astigmatism
+  // ---- Refractive pattern hint ----
   String _refractiveHintCombined({
     required double? worstDistance,
     required double? worstNear,
@@ -340,13 +358,13 @@ class ReportService {
 
     final gapBig =
         (interEyeDiffDistance != null && interEyeDiffDistance >= bigGap) ||
-        (interEyeDiffNear != null && interEyeDiffNear >= bigGap);
+            (interEyeDiffNear != null && interEyeDiffNear >= bigGap);
 
     if (gapBig) {
       return 'Difference between eyes is notable — possible astigmatism or anisometropia.';
     }
 
-    // If only distance test available (legacy)
+    // Legacy-only cases
     if (worstNear == null && worstDistance != null) {
       if (worstDistance >= myopiaCut) {
         return 'Likely short-sight (myopia) — distance vision reduced.';
@@ -357,7 +375,6 @@ class ReportService {
       return 'No strong refractive pattern from distance screening alone.';
     }
 
-    // If only near test available
     if (worstDistance == null && worstNear != null) {
       if (worstNear > okCut) {
         return a >= 40
@@ -411,7 +428,6 @@ class ReportService {
 
 class _AgeInfo {
   final String label;
-
   /// Maximum acceptable logMAR (lower/equal is passing).
   final double passThresholdLogMAR;
   const _AgeInfo(this.label, this.passThresholdLogMAR);

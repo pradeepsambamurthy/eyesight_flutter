@@ -31,13 +31,14 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
   final _calib = CalibrationService.instance;
   final _comp = ComplianceService.instance; // reserved for future use
 
-  // Which test are we running: distance or near?
-  late vm.TestMode _mode;
-
+  late vm.TestMode _mode; // distance (default) or near
   vm.CalibrationResult? _cal;
+
   vm.EyeSide _eye = vm.EyeSide.right;
   vm.AcuityResult? _r, _l;
+
   bool _started = false;
+  bool _busy = false;
 
   String get _introStatus => _mode == vm.TestMode.near
       ? 'Hold device ~40 cm / 16 in away. Cover LEFT eye.'
@@ -49,17 +50,30 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final args = ModalRoute.of(context)?.settings.arguments;
-    // Expect arguments like: {'mode': vm.TestMode.near}
     _mode = (args is Map && args['mode'] is vm.TestMode)
         ? args['mode'] as vm.TestMode
-        : vm.TestMode.distance; // default if nothing passed
+        : vm.TestMode.distance;
     _status = _introStatus;
   }
 
   Future<void> _begin() async {
-    _cal = await _calib.quickDefaults(mode: _mode);
-    await _acuity.start(eye: _eye, calibration: _cal!); // start with RIGHT eye
-    setState(() => _started = true);
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      _cal = await _calib.quickDefaults(mode: _mode);
+      if (_cal == null) {
+        _snack('Calibration failed. Please try again.');
+        return;
+      }
+      _eye = vm.EyeSide.right; // start with RIGHT eye
+      await _acuity.start(eye: _eye, calibration: _cal!);
+      setState(() {
+        _started = true;
+        _status = _introStatus;
+      });
+    } finally {
+      setState(() => _busy = false);
+    }
   }
 
   /// Convert whatever the service returns into our vm.AcuityResult
@@ -74,18 +88,30 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
 
   /// User tapped "I read it" (continues staircase; finishes only at stop rule)
   Future<void> _onCouldRead() async {
+    if (_busy) return;
     final finished = _acuity.submitAnswer(true);
     setState(() {});
     if (!finished) return;
 
-    final vm.AcuityResult res = _toVmResult(_acuity.finish());
-    await _handleEyeDone(res);
+    setState(() => _busy = true);
+    try {
+      final vm.AcuityResult res = _toVmResult(_acuity.finish());
+      await _handleEyeDone(res);
+    } finally {
+      setState(() => _busy = false);
+    }
   }
 
   /// User tapped "Couldn't read" (immediately finalize current eye)
   Future<void> _onCouldNotRead() async {
-    final vm.AcuityResult res = _toVmResult(_acuity.finish());
-    await _handleEyeDone(res);
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final vm.AcuityResult res = _toVmResult(_acuity.finish());
+      await _handleEyeDone(res);
+    } finally {
+      setState(() => _busy = false);
+    }
   }
 
   Future<void> _handleEyeDone(vm.AcuityResult res) async {
@@ -127,6 +153,12 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
     );
   }
 
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = _mode == vm.TestMode.near
@@ -135,59 +167,81 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: !_started
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Calibration',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(_introStatus),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _begin,
-                    child: const Text('Start Right Eye'),
-                  ),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(_status),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Testing ${_eye == vm.EyeSide.right ? 'RIGHT' : 'LEFT'} eye',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: Center(child: _acuity.currentWidget(context)),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _onCouldRead,
-                          icon: const Icon(Icons.check),
-                          label: const Text('I read it'),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: !_started
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Calibration',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_introStatus),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: _busy ? null : _begin,
+                      child: const Text('Start Right Eye'),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(_status),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Testing ${_eye == vm.EyeSide.right ? 'RIGHT' : 'LEFT'} eye',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Responsive letter area; if AcuityService already sizes, this still works.
+                    Expanded(
+                      child: Center(
+                        child: LayoutBuilder(
+                          builder: (context, c) {
+                            final w = c.maxWidth, h = c.maxHeight;
+                            final box = ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: w * 0.9,
+                                maxHeight: h * 0.9,
+                              ),
+                              child: _acuity.currentWidget(context),
+                            );
+                            return box;
+                          },
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _onCouldNotRead,
-                          icon: const Icon(Icons.close),
-                          label: const Text("Couldn't read"),
+                    ),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _busy ? null : _onCouldRead,
+                            icon: const Icon(Icons.check),
+                            label: const Text('I read it'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _onCouldNotRead,
+                            icon: const Icon(Icons.close),
+                            label: const Text("Couldn't read"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
