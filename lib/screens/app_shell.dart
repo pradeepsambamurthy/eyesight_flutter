@@ -1,23 +1,12 @@
 // lib/screens/app_shell.dart
 import 'dart:ui';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-// PDF / printing
-import 'package:pdf/widgets.dart' as pw;
-import 'package:pdf/pdf.dart';
-import 'package:printing/printing.dart';
-
-// App services
-import 'package:eyesight_flutter/services/report_service.dart'
-    show ReportService;
-
-// Screens / widgets
+import '../services/report_service.dart';
 import 'acuity_test_screen.dart';
-import 'report_screen.dart'; // defines ReportBody (content-only)
-import 'login_screen.dart'; // must export LoginFormEmbedded
+import 'report_screen.dart';
+import 'login_screen.dart';
 
 enum AppSection { home, howto, about, test, report }
 
@@ -31,9 +20,8 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
   late final TabController _tab;
-
-  bool _showLogin = false; // inline overlay visibility
-  int? _pendingTabAfterLogin; // where to go after successful login
+  bool _showLogin = false;
+  int? _pendingTabAfterLogin;
 
   @override
   void initState() {
@@ -50,7 +38,7 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
           _pendingTabAfterLogin = null;
         }
       } else {
-        setState(() {}); // refresh header account state
+        setState(() {}); // refresh account icon
       }
     });
   }
@@ -62,7 +50,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
   }
 
   void _goHome() => _tab.animateTo(0);
-
   void _openLoginInline({int? goToTabAfter}) {
     setState(() {
       _pendingTabAfterLogin = goToTabAfter;
@@ -75,13 +62,11 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      // ================== HEADER ==================
       appBar: AppBar(
         centerTitle: false,
         backgroundColor: const Color(0xFF1E60E6),
         foregroundColor: Colors.white,
-        elevation: 0,
-        title: _BrandTitle(onTap: _goHome),
+        title: const _BrandTitle(),
         actions: [
           if (user == null)
             Padding(
@@ -136,10 +121,9 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
             child: TabBar(
               controller: _tab,
               onTap: (i) {
-                // Gate the Test tab (index 3) behind login
                 if (i == 3 && FirebaseAuth.instance.currentUser == null) {
                   _openLoginInline(goToTabAfter: 3);
-                  _tab.animateTo(_tab.index); // keep current until login
+                  _tab.animateTo(_tab.index);
                 } else {
                   _tab.animateTo(i);
                 }
@@ -162,10 +146,8 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
         ),
       ),
 
-      // ================== BODY ==================
       body: Stack(
         children: [
-          // 1) Background image
           Positioned.fill(
             child: Image.asset(
               'assets/images/eye_bg.png',
@@ -173,7 +155,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
               alignment: Alignment.center,
             ),
           ),
-          // 2) Soft wash for readability
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -188,40 +169,22 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // 3) Pages
           Positioned.fill(
             child: TabBarView(
               controller: _tab,
               physics: FirebaseAuth.instance.currentUser == null
                   ? const NeverScrollableScrollPhysics()
                   : null,
-              children: [
-                _HomeContent(
-                  onStartTest: () {
-                    if (FirebaseAuth.instance.currentUser == null) {
-                      _openLoginInline(goToTabAfter: 3);
-                    } else {
-                      _tab.animateTo(3);
-                    }
-                  },
-                ),
-                _HowToContent(
-                  onGoTest: () {
-                    if (FirebaseAuth.instance.currentUser == null) {
-                      _openLoginInline(goToTabAfter: 3);
-                    } else {
-                      _tab.animateTo(3);
-                    }
-                  },
-                ),
-                const _AboutContent(),
-                const _TestGate(), // ← gate now asks for Name/Age/Gender first
-                _ReportTab(onDownloadPdf: _downloadReportPdf),
+              children: const [
+                _HomeContent(),
+                _HowToContent(),
+                _AboutContent(),
+                _TestContent(), // <— renders AcuityTestScreen (new UI)
+                _ReportTab(),
               ],
             ),
           ),
 
-          // 4) Login overlay under header
           if (_showLogin) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -294,7 +257,6 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
         ],
       ),
 
-      // ================== FOOTER ==================
       bottomNavigationBar: Container(
         color: const Color(0xFF1E60E6),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -315,177 +277,53 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
       ),
     );
   }
-
-  // ---------------- PDF download ----------------
-  Future<void> _downloadReportPdf() async {
-    try {
-      final data = ReportService.instance.current;
-
-      String show(dynamic v) => v == null ? '—' : v.toString();
-
-      pw.Widget h1(String t) => pw.Text(
-        t,
-        style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
-      );
-      pw.Widget h2(String t) => pw.Text(
-        t,
-        style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-      );
-      pw.Widget kv(String k, String v) => pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(k),
-          pw.SizedBox(width: 12),
-          pw.Expanded(child: pw.Text(v, textAlign: pw.TextAlign.right)),
-        ],
-      );
-      pw.Widget block(String title, List<pw.Widget> children) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          h2(title),
-          pw.SizedBox(height: 6),
-          ...children,
-          pw.SizedBox(height: 10),
-        ],
-      );
-
-      final doc = pw.Document();
-
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (ctx) => pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              h1('Vision Screener Report'),
-              pw.SizedBox(height: 4),
-              pw.Text('Generated: ${DateTime.now().toIso8601String()}'),
-              pw.Divider(),
-              pw.SizedBox(height: 8),
-
-              block('Profile', [
-                kv('Name', data.name ?? '—'),
-                kv('Age', (data.age ?? data.face?.age)?.toString() ?? '—'),
-                kv('Gender', data.gender ?? data.face?.gender ?? '—'),
-                if (data.face?.wearingGlasses != null)
-                  kv(
-                    'Wearing Glasses',
-                    data.face!.wearingGlasses! ? 'Yes' : 'No',
-                  ),
-              ]),
-
-              block('Summary', [
-                kv('Overall', data.overallLabel),
-                kv('Assessment', data.assessment),
-                kv('Age Group', data.ageGroupLabel ?? '—'),
-              ]),
-
-              block('Distance Acuity', [
-                kv('Right', show(data.distanceRight)),
-                kv('Left', show(data.distanceLeft)),
-              ]),
-
-              block('Near Acuity', [
-                kv('Right', show(data.nearRight)),
-                kv('Left', show(data.nearLeft)),
-              ]),
-
-              block('Assessment & Guidance', [
-                kv('Age-adjusted verdict', data.ageAdjustedVerdict ?? '—'),
-                kv('Refractive hint', data.refractiveHint ?? '—'),
-                kv('Warning', data.warning ?? '—'),
-              ]),
-
-              pw.SizedBox(height: 12),
-              pw.Text(
-                'Disclaimer: Screening only. Not a diagnosis. See an eye care professional for concerns.',
-                style: const pw.TextStyle(fontSize: 10),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      await Printing.sharePdf(
-        bytes: await doc.save(),
-        filename: 'VisionScreener_Report.pdf',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not create PDF: $e')));
-    }
-  }
 }
 
-// ================== Small widgets ==================
+// ---------- Small widgets ----------
 class _BrandTitle extends StatelessWidget {
-  const _BrandTitle({this.onTap});
-  final VoidCallback? onTap;
+  const _BrandTitle();
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      mouseCursor: SystemMouseCursors.click,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.visibility, color: Colors.white),
-          SizedBox(width: 10),
-          Text(
-            'Vision Screener',
-            style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: const [
+        Icon(Icons.visibility, color: Colors.white),
+        SizedBox(width: 10),
+        Text(
+          'Vision Screener',
+          style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+      ],
     );
   }
 }
 
-// ---------------- Home ----------------
 class _HomeContent extends StatelessWidget {
-  const _HomeContent({required this.onStartTest});
-  final VoidCallback onStartTest;
+  const _HomeContent();
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final titleStyle = text.headlineMedium?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-    );
-    final bodyStyle = text.bodyLarge?.copyWith(
-      color: Colors.white.withOpacity(0.92),
-      fontWeight: FontWeight.w600,
-    );
-
+    final t = Theme.of(context).textTheme;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('Welcome', style: titleStyle),
+            Text(
+              'Welcome',
+              style: t.headlineMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 12),
             Text(
-              'Use this app to quickly screen visual acuity at distance and near. '
-              'While this is not a medical diagnosis, it helps flag potential issues '
-              '(e.g., myopia, presbyopia, large inter-eye differences).',
-              style: bodyStyle,
-            ),
-            const SizedBox(height: 24),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 280,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Start Test'),
-                  onPressed: onStartTest,
-                ),
+              'Use this app to quickly screen visual acuity at distance and near.',
+              style: t.bodyLarge?.copyWith(
+                color: Colors.white.withOpacity(0.92),
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -495,30 +333,27 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
-// ---------------- How to ----------------
 class _HowToContent extends StatelessWidget {
-  const _HowToContent({required this.onGoTest});
-  final VoidCallback onGoTest;
+  const _HowToContent();
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final titleStyle = text.headlineMedium?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-    );
-    final bodyStyle = text.bodyLarge?.copyWith(
-      color: Colors.white.withOpacity(0.92),
-      fontWeight: FontWeight.w600,
-    );
-
     Widget dot(String s) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('•  ', style: TextStyle(color: Colors.white)),
-          Expanded(child: Text(s, style: bodyStyle)),
+          Expanded(
+            child: Text(
+              s,
+              style: text.bodyLarge?.copyWith(
+                color: Colors.white.withOpacity(0.92),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -529,16 +364,20 @@ class _HowToContent extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('How to Use This Test', style: titleStyle),
+            Text(
+              'How to Use This Test',
+              style: text.headlineMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 12),
-            dot('Best with a helper at ~10 ft (3 m).'),
+            dot(
+              'Distance test: stand ~3 m (10 ft). Near test: hold ~40 cm (16″).',
+            ),
             dot('Test one eye at a time; cover the other without pressure.'),
-            dot('Read the smallest line you can; the helper records results.'),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Go to Test'),
-              onPressed: onGoTest,
+            dot(
+              'Read the 5 letters on each line; ≥3/5 counts as passing a line.',
             ),
           ],
         ),
@@ -547,275 +386,47 @@ class _HowToContent extends StatelessWidget {
   }
 }
 
-// ---------------- About ----------------
 class _AboutContent extends StatelessWidget {
   const _AboutContent();
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final titleStyle = text.headlineMedium?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-    );
-    final bodyStyle = text.bodyLarge?.copyWith(
-      color: Colors.white.withOpacity(0.92),
-      fontWeight: FontWeight.w600,
-    );
-
-    Widget info(String title, String body, IconData icon) => Card(
-      color: Colors.white.withOpacity(0.18),
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Text(body, style: bodyStyle),
-      ),
-    );
-
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1000),
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('About the App', style: titleStyle),
+            Text(
+              'About the App',
+              style: text.headlineMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 12),
-            info(
-              'Distance & Near Acuity',
-              'We map how small you can read to Snellen/logMAR labels.',
-              Icons.format_size,
-            ),
-            info(
-              'Age-Adjusted Hints',
-              'We compare with age thresholds for patterns like myopia/presbyopia.',
-              Icons.rule,
-            ),
-            info(
-              'Inter-Eye Differences',
-              'Large differences between eyes are flagged.',
-              Icons.compare_arrows,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------- Test Gate ----------------
-// If signed in but Name/Age/Gender missing, show demographics form before the test.
-class _TestGate extends StatefulWidget {
-  const _TestGate();
-
-  @override
-  State<_TestGate> createState() => _TestGateState();
-}
-
-class _TestGateState extends State<_TestGate> {
-  // Toggle this to require gender selection before test.
-  static const bool _requireGender = true; // set false if gender optional
-
-  bool _needsDemo() {
-    final r = ReportService.instance.current;
-    final missingName = r.name == null || r.name!.trim().isEmpty;
-    final missingAge = r.age == null;
-    final missingGender = _requireGender
-        ? (r.gender == null || r.gender!.trim().isEmpty)
-        : false;
-    return missingName || missingAge || missingGender;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final user = snap.data;
-        if (user == null) return const _LoginRequiredCard();
-
-        if (_needsDemo()) {
-          final r = ReportService.instance.current;
-          return _DemographicsCard(
-            initialName: r.name,
-            initialAge: r.age,
-            initialGender: r.gender,
-            requireGender: _requireGender,
-            onSaved: (name, age, gender) {
-              ReportService.instance.setDemographics(
-                name: name,
-                age: age,
-                gender: gender,
-              );
-              setState(() {}); // refresh; next build will show test
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Saved. You can start the test now.'),
+            Card(
+              color: Colors.white.withOpacity(0.18),
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: const ListTile(
+                leading: Icon(Icons.rule, color: Colors.white),
+                title: Text(
+                  'Age-Adjusted Hints',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              );
-            },
-          );
-        }
-
-        return const _TestContent();
-      },
-    );
-  }
-}
-
-class _DemographicsCard extends StatefulWidget {
-  const _DemographicsCard({
-    required this.onSaved,
-    this.initialName,
-    this.initialAge,
-    this.initialGender,
-    this.requireGender = false,
-  });
-
-  final void Function(String name, int age, String? gender) onSaved;
-  final String? initialName;
-  final int? initialAge;
-  final String? initialGender;
-  final bool requireGender;
-
-  @override
-  State<_DemographicsCard> createState() => _DemographicsCardState();
-}
-
-class _DemographicsCardState extends State<_DemographicsCard> {
-  final _form = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _age = TextEditingController();
-  String? _gender; // 'Male' / 'Female' / 'Other' / null
-
-  @override
-  void initState() {
-    super.initState();
-    _name.text = widget.initialName ?? '';
-    _age.text = widget.initialAge?.toString() ?? '';
-    _gender = widget.initialGender;
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _age.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 700),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Card(
-            color: Colors.white,
-            elevation: 0,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _form,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Before we begin',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.requireGender
-                          ? 'Please enter your name, age, and gender for the report.'
-                          : 'Please enter your name and age for the report (gender optional).',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _name,
-                      decoration: const InputDecoration(
-                        labelText: 'Name',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _age,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Age',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        final n = int.tryParse((v ?? '').trim());
-                        if (n == null || n <= 0 || n > 120) {
-                          return 'Enter a valid age';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // ---- Gender dropdown ----
-                    DropdownButtonFormField<String>(
-                      value: _gender,
-                      items: const [
-                        DropdownMenuItem(value: 'Male', child: Text('Male')),
-                        DropdownMenuItem(
-                          value: 'Female',
-                          child: Text('Female'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Other',
-                          child: Text('Other / Prefer not to say'),
-                        ),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Gender',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (v) => setState(() => _gender = v),
-                      validator: widget.requireGender
-                          ? (v) => (v == null || v.isEmpty)
-                                ? 'Please select gender'
-                                : null
-                          : null,
-                    ),
-
-                    const SizedBox(height: 14),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.check),
-                      label: const Text('Save & Start Test'),
-                      onPressed: () {
-                        if (_form.currentState?.validate() != true) return;
-                        final name = _name.text.trim();
-                        final age = int.parse(_age.text.trim());
-                        widget.onSaved(name, age, _gender);
-                      },
-                    ),
-                  ],
+                subtitle: Text(
+                  'We compare distance and near results to age norms to hint at myopia/presbyopia.',
+                  style: TextStyle(color: Colors.white70),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -838,7 +449,7 @@ class _TestContent extends StatelessWidget {
             margin: const EdgeInsets.all(8),
             child: const Padding(
               padding: EdgeInsets.all(8.0),
-              child: AcuityTestScreen(),
+              child: AcuityTestScreen(), // NEW screen
             ),
           ),
         ),
@@ -847,41 +458,8 @@ class _TestContent extends StatelessWidget {
   }
 }
 
-class _LoginRequiredCard extends StatelessWidget {
-  const _LoginRequiredCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 700),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Card(
-            color: Colors.white.withOpacity(0.18),
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            child: const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'Sign in required. Use the “Sign in” button in the top bar to log in and begin the test.',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------- Report Tab ----------------
 class _ReportTab extends StatelessWidget {
-  const _ReportTab({required this.onDownloadPdf});
-  final Future<void> Function() onDownloadPdf;
+  const _ReportTab();
 
   @override
   Widget build(BuildContext context) {
@@ -903,25 +481,19 @@ class _ReportTab extends StatelessWidget {
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
+                children: const [
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Your Report', style: titleStyle),
-                  ),
-                  const SizedBox(height: 10),
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: ReportBody(), // your existing content-only widget
-                  ),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.download),
-                      label: const Text('Download Report'),
-                      onPressed: onDownloadPdf,
+                    child: Text(
+                      'Your Report',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
+                  SizedBox(height: 10),
+                  Padding(padding: EdgeInsets.all(12), child: ReportBody()),
                 ],
               ),
             ),
