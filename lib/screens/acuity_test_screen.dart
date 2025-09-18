@@ -91,6 +91,38 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
     return base * math.pow(10, logMAR);
   }
 
+  Future<void> _goReport() async {
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      '/report',
+      arguments: {'completed': _mode},
+    );
+  }
+
+  Future<void> _autoSaveAndGoToReport() async {
+    if (_resultRight == null || _resultLeft == null) return;
+    ReportService.instance.updateAcuityModeAware(
+      mode: _mode,
+      right: vm.AcuityResult(_resultRight!),
+      left: vm.AcuityResult(_resultLeft!),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _mode == vm.TestMode.near
+                ? 'Near results saved. Opening report...'
+                : 'Distance results saved. Opening report...',
+          ),
+          duration: const Duration(milliseconds: 800),
+        ),
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 100));
+    await _goReport();
+  }
+
   // ------------ stage transitions ------------
 
   void _startRight() => setState(() => _stage = _Stage.testingRight);
@@ -124,6 +156,7 @@ class _AcuityTestScreenState extends State<AcuityTestScreen> {
     } else if (_stage == _Stage.testingLeft) {
       _resultLeft = logmar;
       _stage = _Stage.finished;
+      _autoSaveAndGoToReport(); // auto-generate report and navigate
     }
   }
 
