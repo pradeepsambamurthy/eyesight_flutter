@@ -1,14 +1,10 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-
 import 'firebase_options.dart';
-
-// Screens / Shell
-import 'screens/app_shell.dart'; // hosts the constant header + tabs (incl. Report tab)
-import 'screens/login_gate.dart'; // standalone gate screen (optional, used by '/login')
-import 'screens/capture_screen.dart'; // '/start'
-import 'screens/acuity_test_screen.dart'; // '/test'
+import 'screens/app_shell.dart';
+import 'screens/capture_screen.dart';
+import 'screens/acuity_test_screen.dart';
 
 // NOTE: Do NOT import 'report_screen.dart' here — the Report UI is shown inside AppShell’s Report tab
 // NOTE: We also don’t need to import login_screen.dart here (it’s used inside AppShell’s overlay)
@@ -56,31 +52,20 @@ class VisionApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'EyeSight',
       theme: theme,
-
-      // Constant header + tabs live in the shell
-      home: const AppShell(),
-
-      // Static routes (avoid `const` inside the builders)
+      // keep these non-const unless constructors are const
+      home: AppShell(),
       routes: {
-        '/start': (_) => const CaptureScreen(),
-        '/test': (_) => const AcuityTestScreen(),
-
-        // Keep Login as a simple route if you still use it
-        '/login': (_) => LoginGate(),
-
-        // Jump back to the shell
-        '/app': (_) => const AppShell(),
+        '/start': (_) => CaptureScreen(),
+        '/test': (_) => AcuityTestScreen(),
+        '/app': (_) => AppShell(),
       },
-
-      // Optional: allow deep-linking to '/report' to open the Report tab in the shell
       onGenerateRoute: (settings) {
         if (settings.name == '/report') {
-          // AppSection is defined in app_shell.dart
-          return MaterialPageRoute(
-            builder: (_) => const AppShell(initialTab: AppSection.report),
+          return MaterialPageRoute<void>(
+            builder: (_) => AppShell(initialTab: AppSection.report),
           );
         }
-        return null; // fall back to `routes` / unknown route behavior
+        return null;
       },
     );
   }

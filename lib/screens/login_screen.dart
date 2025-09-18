@@ -7,12 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 // Google (mobile)
 import 'package:google_sign_in/google_sign_in.dart' as g;
 
-// Facebook (mobile)
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart' as fba;
-
-// Apple (mobile)
-import 'package:sign_in_with_apple/sign_in_with_apple.dart' as apple;
-
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
@@ -109,58 +103,6 @@ class _LoginFormEmbeddedState extends State<LoginFormEmbedded> {
     await auth.signInWithCredential(credential);
   });
 
-  // ---------- Facebook ----------
-  Future<void> _signInFacebook() async => _withBusy(() async {
-    final auth = FirebaseAuth.instance;
-
-    if (kIsWeb) {
-      final provider = FacebookAuthProvider();
-      await auth.signInWithPopup(provider);
-      return;
-    }
-
-    // Android/iOS via native SDK
-    final result = await fba.FacebookAuth.instance.login();
-    if (result.status != fba.LoginStatus.success) {
-      throw Exception('Facebook sign-in failed: ${result.status}');
-    }
-    final accessToken = result.accessToken!;
-    final credential = FacebookAuthProvider.credential(accessToken.tokenString);
-    await auth.signInWithCredential(credential);
-  });
-
-  // ---------- Apple ----------
-  bool get _appleAvailableOnThisPlatform {
-    // Show Apple button on Web (Firebase popup) and on iOS/macOS builds
-    if (kIsWeb) return true;
-    final p = defaultTargetPlatform;
-    return p == TargetPlatform.iOS || p == TargetPlatform.macOS;
-  }
-
-  Future<void> _signInApple() async => _withBusy(() async {
-    final auth = FirebaseAuth.instance;
-
-    if (kIsWeb) {
-      // Web uses generic OAuth provider
-      final provider = OAuthProvider('apple.com');
-      await auth.signInWithPopup(provider);
-      return;
-    }
-
-    // iOS/macOS native
-    final appleId = await apple.SignInWithApple.getAppleIDCredential(
-      scopes: [
-        apple.AppleIDAuthorizationScopes.email,
-        apple.AppleIDAuthorizationScopes.fullName,
-      ],
-    );
-    final oauthCredential = OAuthProvider('apple.com').credential(
-      idToken: appleId.identityToken,
-      accessToken: appleId.authorizationCode,
-    );
-    await auth.signInWithCredential(oauthCredential);
-  });
-
   @override
   Widget build(BuildContext context) {
     final btnStyle = ElevatedButton.styleFrom(
@@ -230,21 +172,6 @@ class _LoginFormEmbeddedState extends State<LoginFormEmbedded> {
             icon: const Icon(Icons.g_mobiledata),
             label: const Text('Google'),
           ),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            style: btnStyle,
-            onPressed: _signInFacebook,
-            icon: const Icon(Icons.facebook),
-            label: const Text('Facebook'),
-          ),
-          const SizedBox(height: 8),
-          if (_appleAvailableOnThisPlatform)
-            ElevatedButton.icon(
-              style: btnStyle,
-              onPressed: _signInApple,
-              icon: const Icon(Icons.apple),
-              label: const Text('Apple'),
-            ),
         ],
       ),
     );

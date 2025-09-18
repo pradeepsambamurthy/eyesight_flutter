@@ -1,5 +1,8 @@
 // lib/screens/capture_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/report_service.dart';
 
 class CaptureScreen extends StatefulWidget {
@@ -12,9 +15,49 @@ class CaptureScreen extends StatefulWidget {
 class _CaptureScreenState extends State<CaptureScreen> {
   final _nameCtrl = TextEditingController();
   final _ageCtrl = TextEditingController();
-
-  String? _gender; // "Male" / "Female" / "Other" / null
   final _formKey = GlobalKey<FormState>();
+
+  String? _gender; // 'Male' / 'Female' / 'Other' / null
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingProfile();
+  }
+
+  Future<void> _loadExistingProfile() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Prefill from Auth displayName
+        if ((user.displayName ?? '').trim().isNotEmpty) {
+          _nameCtrl.text = user.displayName!.trim();
+        }
+        // Prefill from Firestore if present
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (doc.exists) {
+          final data = doc.data()!;
+          if ((data['name'] ?? '').toString().trim().isNotEmpty) {
+            _nameCtrl.text = data['name'].toString().trim();
+          }
+          if (data['age'] != null) {
+            _ageCtrl.text = data['age'].toString();
+          }
+          if ((data['gender'] ?? '').toString().isNotEmpty) {
+            _gender = data['gender'].toString();
+          }
+        }
+      }
+    } catch (_) {
+      // ignore prefilling errors
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -23,25 +66,44 @@ class _CaptureScreenState extends State<CaptureScreen> {
     super.dispose();
   }
 
-  void _startTest() {
-    // Gather and normalize inputs
+  Future<void> _saveAndStart() async {
     final name = _nameCtrl.text.trim();
     final age = int.tryParse(_ageCtrl.text.trim());
     final gender = _gender;
 
-    // Save demographics to shared report service
+    // Save to report service (used by your PDF/report)
     ReportService.instance.setDemographics(
       name: name.isEmpty ? null : name,
       age: age,
       gender: gender,
     );
 
-    // Navigate to your test route (ensure this route exists in MaterialApp routes)
+    // Persist to Firestore for next time (if signed in)
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'name': name.isEmpty ? null : name,
+        'age': age,
+        'gender': gender,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      // keep Auth displayName in sync (optional)
+      if (name.isNotEmpty && name != (user.displayName ?? '')) {
+        await user.updateDisplayName(name);
+      }
+    }
+
+    if (!mounted) return;
+    // IMPORTANT: go to /test (the _TestGate will enforce that gender is set)
     Navigator.pushNamed(context, '/test');
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Start / Profile')),
       body: Form(
@@ -61,6 +123,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             TextFormField(
               controller: _ageCtrl,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: 'Age (years, optional)',
                 border: OutlineInputBorder(),
@@ -92,15 +155,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 border: OutlineInputBorder(),
               ),
               onChanged: (val) => setState(() => _gender = val),
+              // To make gender REQUIRED, uncomment:
+              // validator: (v) => (v == null || v.isEmpty) ? 'Please select gender' : null,
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: () {
                 if (_formKey.currentState?.validate() != true) return;
-                _startTest();
+                _saveAndStart();
               },
               icon: const Icon(Icons.play_arrow),
-              label: const Text('Start Visual Acuity Test'),
+              label: const Text('Save & Start Test'),
             ),
             const SizedBox(height: 8),
             const Text(

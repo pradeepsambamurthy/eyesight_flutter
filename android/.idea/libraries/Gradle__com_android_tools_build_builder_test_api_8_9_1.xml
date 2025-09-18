@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="Gradle: com.android.tools.build:builder-test-api:8.9.1" type="java-imported" external-system-id="GRADLE">
+    <properties groupId="com.android.tools.build" artifactId="builder-test-api" version="8.9.1" baseVersion="8.9.1" />
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.android.tools.build/builder-test-api/8.9.1/a8b165aaca91a3b1d7b861123887e87e078c9511/builder-test-api-8.9.1.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.android.tools.build/builder-test-api/8.9.1/e5a609db696aa48bc2913cfd1f9a3187494d3d90/builder-test-api-8.9.1-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

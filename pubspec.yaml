@@ -33,9 +33,6 @@ dependencies:
 
   # Social sign-in
   google_sign_in: ^6.2.1
-  flutter_facebook_auth: ^7.0.1
-  sign_in_with_apple: ^6.1.0
-
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

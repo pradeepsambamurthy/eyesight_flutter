@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="Gradle: com.android.tools.build:aapt2-proto:8.9.1-12782657" type="java-imported" external-system-id="GRADLE">
+    <properties groupId="com.android.tools.build" artifactId="aapt2-proto" version="8.9.1-12782657" baseVersion="8.9.1-12782657" />
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.android.tools.build/aapt2-proto/8.9.1-12782657/884e5b6ec676bb8070490caca7637fd40ec1c041/aapt2-proto-8.9.1-12782657.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.android.tools.build/aapt2-proto/8.9.1-12782657/44593956acc830992b8aa545ed21c15510fdd07f/aapt2-proto-8.9.1-12782657-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

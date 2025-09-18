@@ -107,6 +107,11 @@ class ReportService {
     current.gender = gender;
   }
 
+  /// Expose current demographics for routing/guards.
+  String? get currentGender => current.gender;
+  String? get currentName => current.name;
+  int? get currentAge => current.age;
+
   /// Backwards-compat setters if you call them separately.
   void updateName(String? v) =>
       current.name = (v == null || v.trim().isEmpty) ? null : v.trim();
@@ -142,18 +147,13 @@ class ReportService {
   }
 
   // ---------------- Acuity results + derived assessments ----------------
-  //
+
   // Legacy (distance-only) entry point: still supported.
   void updateAcuity(vm.AcuityResult right, vm.AcuityResult left) {
-    // Treat as Distance if mode not specified.
     updateAcuityModeAware(mode: vm.TestMode.distance, right: right, left: left);
   }
 
   /// New: Mode-aware update. Call this from the test screen.
-  ///
-  /// Stores Distance/Near separately, keeps the "main" section (current.right/left)
-  /// pointing to Distance when present (or Near if Distance missing), and computes
-  /// warnings, age verdict, and refractive hints using BOTH tests when available.
   void updateAcuityModeAware({
     required vm.TestMode mode,
     required vm.AcuityResult right,
@@ -169,7 +169,6 @@ class ReportService {
       current.nearRight = r;
       current.nearLeft = l;
     } else {
-      // if you ever add vm.TestMode.both, fall back to distance section
       current.distanceRight = r;
       current.distanceLeft = l;
     }
@@ -183,11 +182,9 @@ class ReportService {
       current.left = current.nearLeft;
     }
 
-    // Compute warnings, verdicts, and refractive hints
     _recomputeAssessments();
   }
 
-  /// If you ever need to clone/normalize the model for the report screen.
   static ReportData normalize(ReportData r) => r;
 
   /// Clear everything (use this for a full app restart, not for "next test")
@@ -320,12 +317,6 @@ class ReportService {
   }
 
   // ---- Refractive pattern hint (uses both tests when possible) ----
-  //
-  // Heuristics:
-  // - Distance worse, Near OK  -> likely Myopia
-  // - Near worse, Distance OK  -> <40: Hyperopia; >=40: Presbyopia
-  // - Both reduced             -> non-specific; advise full exam
-  // - Large inter-eye gap      -> mention anisometropia/astigmatism
   String _refractiveHintCombined({
     required double? worstDistance,
     required double? worstNear,

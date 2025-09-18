@@ -1,0 +1,14 @@
+<component name="libraryTable">
+  <library name="Gradle: io.mockk:mockk-core-jvm:1.14.5" type="java-imported" external-system-id="GRADLE">
+    <properties groupId="io.mockk" artifactId="mockk-core-jvm" version="1.14.5" baseVersion="1.14.5" />
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/io.mockk/mockk-core-jvm/1.14.5/34b1f8ab00f1b294cd17661e154258e4040ba1bd/mockk-core-jvm-1.14.5.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/io.mockk/mockk-core-jvm/1.14.5/2ad14aed781c4a73ed4dbb421966d408a0a06686/mockk-core-jvm-1.14.5-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/io.mockk/mockk-core-jvm/1.14.5/3196d024da758923e3fc9ff2ea831a12ec0192ba/mockk-core-jvm-1.14.5-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

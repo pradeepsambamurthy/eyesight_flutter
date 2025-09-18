@@ -215,7 +215,7 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
                   },
                 ),
                 const _AboutContent(),
-                const _TestGate(), // <- gate now asks for Name/Age first
+                const _TestGate(), // ← gate now asks for Name/Age/Gender first
                 _ReportTab(onDownloadPdf: _downloadReportPdf),
               ],
             ),
@@ -612,7 +612,7 @@ class _AboutContent extends StatelessWidget {
 }
 
 // ---------------- Test Gate ----------------
-// If signed in but Name/Age missing, show demographics form before the test.
+// If signed in but Name/Age/Gender missing, show demographics form before the test.
 class _TestGate extends StatefulWidget {
   const _TestGate();
 
@@ -621,9 +621,17 @@ class _TestGate extends StatefulWidget {
 }
 
 class _TestGateState extends State<_TestGate> {
+  // Toggle this to require gender selection before test.
+  static const bool _requireGender = true; // set false if gender optional
+
   bool _needsDemo() {
     final r = ReportService.instance.current;
-    return (r.name == null || r.name!.trim().isEmpty) || (r.age == null);
+    final missingName = r.name == null || r.name!.trim().isEmpty;
+    final missingAge = r.age == null;
+    final missingGender = _requireGender
+        ? (r.gender == null || r.gender!.trim().isEmpty)
+        : false;
+    return missingName || missingAge || missingGender;
   }
 
   @override
@@ -638,9 +646,18 @@ class _TestGateState extends State<_TestGate> {
         if (user == null) return const _LoginRequiredCard();
 
         if (_needsDemo()) {
+          final r = ReportService.instance.current;
           return _DemographicsCard(
-            onSaved: (name, age) {
-              ReportService.instance.setDemographics(name: name, age: age);
+            initialName: r.name,
+            initialAge: r.age,
+            initialGender: r.gender,
+            requireGender: _requireGender,
+            onSaved: (name, age, gender) {
+              ReportService.instance.setDemographics(
+                name: name,
+                age: age,
+                gender: gender,
+              );
               setState(() {}); // refresh; next build will show test
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -658,8 +675,19 @@ class _TestGateState extends State<_TestGate> {
 }
 
 class _DemographicsCard extends StatefulWidget {
-  const _DemographicsCard({required this.onSaved});
-  final void Function(String name, int age) onSaved;
+  const _DemographicsCard({
+    required this.onSaved,
+    this.initialName,
+    this.initialAge,
+    this.initialGender,
+    this.requireGender = false,
+  });
+
+  final void Function(String name, int age, String? gender) onSaved;
+  final String? initialName;
+  final int? initialAge;
+  final String? initialGender;
+  final bool requireGender;
 
   @override
   State<_DemographicsCard> createState() => _DemographicsCardState();
@@ -669,6 +697,15 @@ class _DemographicsCardState extends State<_DemographicsCard> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _age = TextEditingController();
+  String? _gender; // 'Male' / 'Female' / 'Other' / null
+
+  @override
+  void initState() {
+    super.initState();
+    _name.text = widget.initialName ?? '';
+    _age.text = widget.initialAge?.toString() ?? '';
+    _gender = widget.initialGender;
+  }
 
   @override
   void dispose() {
@@ -703,9 +740,11 @@ class _DemographicsCardState extends State<_DemographicsCard> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Please enter your name and age for the report.',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                    Text(
+                      widget.requireGender
+                          ? 'Please enter your name, age, and gender for the report.'
+                          : 'Please enter your name and age for the report (gender optional).',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -733,16 +772,43 @@ class _DemographicsCardState extends State<_DemographicsCard> {
                         return null;
                       },
                     ),
+                    const SizedBox(height: 12),
+
+                    // ---- Gender dropdown ----
+                    DropdownButtonFormField<String>(
+                      value: _gender,
+                      items: const [
+                        DropdownMenuItem(value: 'Male', child: Text('Male')),
+                        DropdownMenuItem(
+                          value: 'Female',
+                          child: Text('Female'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Other',
+                          child: Text('Other / Prefer not to say'),
+                        ),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'Gender',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => _gender = v),
+                      validator: widget.requireGender
+                          ? (v) => (v == null || v.isEmpty)
+                                ? 'Please select gender'
+                                : null
+                          : null,
+                    ),
+
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Save & Start Test'),
                       onPressed: () {
                         if (_form.currentState?.validate() != true) return;
-                        widget.onSaved(
-                          _name.text.trim(),
-                          int.parse(_age.text.trim()),
-                        );
+                        final name = _name.text.trim();
+                        final age = int.parse(_age.text.trim());
+                        widget.onSaved(name, age, _gender);
                       },
                     ),
                   ],
