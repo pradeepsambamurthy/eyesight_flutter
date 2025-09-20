@@ -1,15 +1,11 @@
 // lib/screens/app_shell.dart
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-// App services (for future PDF/share, optional here)
-import '../services/report_service.dart' show ReportService;
-
 // Screens / widgets
 import 'acuity_test_screen.dart';
-import 'report_screen.dart'; // defines ReportBody (content-only)
+import 'report_screen.dart'; // must export ReportBody (content-only)
 import 'login_screen.dart'; // must export LoginFormEmbedded
 
 enum AppSection { home, howto, about, test, report }
@@ -44,7 +40,8 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
           _pendingTabAfterLogin = null;
         }
       } else {
-        setState(() {}); // refresh header account state
+        // Refresh account display state (avatar menu vs Sign in)
+        setState(() {});
       }
     });
   }
@@ -165,19 +162,16 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
               alignment: Alignment.center,
             ),
           ),
-          // 2) Soft wash for readability
-          // NEW: darker scrim + subtle blur = much better contrast
+          // 2) Soft wash for readability (subtle blur + darker scrim)
           Positioned.fill(
             child: Stack(
               children: [
-                // Very light blur to knock down sparkles behind text
                 Positioned.fill(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                    child: const SizedBox(), // required child
+                    child: const SizedBox(),
                   ),
                 ),
-                // Dark gradient scrim
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
@@ -223,8 +217,10 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
                   },
                 ),
                 const _AboutContent(),
-                const _TestContent(), // <- renders AcuityTestScreen
-                const _ReportTab(), // <- shows your ReportBody
+                TestContent(
+                  onRequestLogin: () => _openLoginInline(goToTabAfter: 3),
+                ),
+                const _ReportTab(), // ✅ now implemented below
               ],
             ),
           ),
@@ -332,7 +328,6 @@ class _BrandTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    // Scale a bit on larger screens
     final titleSize = w >= 1200
         ? 24.0
         : w >= 800
@@ -353,9 +348,9 @@ class _BrandTitle extends StatelessWidget {
           'Vision Screener',
           style: TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: titleSize, // ⬅️ bigger title
-            letterSpacing: 0.3, // small polish
+            fontWeight: FontWeight.w600,
+            fontSize: titleSize,
+            letterSpacing: 0.3,
             height: 1.1,
             shadows: [
               Shadow(
@@ -388,7 +383,6 @@ class _HomeContent extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            // Hero title
             Text(
               'Welcome',
               style: text.headlineLarge?.copyWith(
@@ -399,10 +393,9 @@ class _HomeContent extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Quickly screen visual acuity at **distance** and **near** — similar to a '
-              'traditional eye chart. The app helps flag potential patterns like short-sight '
-              '(myopia) and long-sight/presbyopia, and highlights large differences between eyes. '
-              'This is a screening tool, not a diagnosis.',
+              'Quickly screen visual acuity at distance and near — similar to a traditional eye chart. '
+              'The app helps flag potential patterns like short-sight (myopia) and long-sight/presbyopia, '
+              'and highlights large differences between eyes. This is a screening tool, not a diagnosis.',
               style: text.titleMedium?.copyWith(
                 color: Colors.white.withOpacity(0.97),
                 fontWeight: FontWeight.w600,
@@ -424,35 +417,17 @@ class _HomeContent extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                TextButton.icon(
-                  icon: const Icon(
-                    Icons.menu_book_outlined,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'How to Use',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  onPressed: () =>
-                      DefaultTabController.of(context)?.animateTo(1),
-                ),
               ],
             ),
 
             const SizedBox(height: 24),
 
-            // Three feature cards
+            // Feature cards
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: const [
-                _InfoCard(
-                  icon: Icons.remove_red_eye_outlined,
-                  title: 'Two test types',
-                  body:
-                      '• Distance (≈3 m / 10 ft): screens for short-sight (myopia)\n'
-                      '• Near (≈40 cm / 16″): screens for long-sight/reading (hyperopia/presbyopia)',
-                ),
+                _TwoTestsCard(),
                 _InfoCard(
                   icon: Icons.rule,
                   title: 'Age-aware guidance',
@@ -487,14 +462,12 @@ class _HomeContent extends StatelessWidget {
             _Section(
               title: 'How it works',
               children: const [
-                _Bullet(
-                  'Pick **Distance** (~3 m / 10 ft) or **Near** (~40 cm / 16″).',
-                ),
+                _Bullet('Pick Distance (~3 m / 10 ft) or Near (~40 cm / 16″).'),
                 _Bullet(
                   'Cover one eye without pressing on it; read 5 letters per line.',
                 ),
                 _Bullet(
-                  'If ≥3/5 are correct, mark **Read**; otherwise **Can’t read**.',
+                  'If you can read the line, tap “I can Read”; otherwise tap “I Can’t read”.',
                 ),
                 _Bullet(
                   'The app switches eyes automatically and saves results.',
@@ -525,16 +498,16 @@ class _HomeContent extends StatelessWidget {
                   a: 'No—this is a screening. If you have symptoms or concerns, see an eye-care professional.',
                 ),
                 _FaqItem(
-                  q: 'Why do both Distance and Near?',
-                  a:
-                      'Distance helps screen short-sight (myopia). Near helps screen long-sight/presbyopia. '
-                      'Doing both gives a clearer overall picture.',
+                  q: 'What is short-sight (myopia)?',
+                  a: 'Far objects can look blurry while near objects are clearer. The Distance test (~3 m / 10 ft) helps screen for this.',
                 ),
                 _FaqItem(
-                  q: 'What does 20/20 mean?',
-                  a:
-                      'It’s a standard measure of clarity at 20 feet. 20/20 is “normal”. '
-                      'Smaller denominators like 20/16 indicate better-than-average acuity.',
+                  q: 'What is long-sight (hyperopia/presbyopia)?',
+                  a: 'Far is usually clear but reading up close can be tiring or blurry. The Near test (~40 cm / 16″) helps screen for this.',
+                ),
+                _FaqItem(
+                  q: 'What does “20/20” mean?',
+                  a: 'It’s a standard measure at 20 feet. 20/20 is “normal”; 20/40 means letters must be twice as large; 20/16 is better than average.',
                 ),
               ],
             ),
@@ -574,11 +547,11 @@ class _InfoCard extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.white),
               const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
+              const Text(
+                'Age-aware guidance',
+                style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   fontSize: 20,
                 ),
               ),
@@ -622,7 +595,7 @@ class _Section extends StatelessWidget {
               title,
               style: const TextStyle(
                 color: Colors.white,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 fontSize: 20,
               ),
             ),
@@ -683,7 +656,7 @@ class _FaqItem extends StatelessWidget {
           q,
           style: const TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
             fontSize: 20,
           ),
         ),
@@ -722,9 +695,111 @@ class _DisclaimerCard extends StatelessWidget {
       child: const Padding(
         padding: EdgeInsets.all(12),
         child: Text(
-          'Disclaimer: Screening only—not a diagnosis. If you have symptoms, eye strain, '
+          'Disclaimer: Screening only — not a diagnosis. If you have symptoms, eye strain, '
           'or concerns about your vision, please consult an eye-care professional.',
           style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+class _TwoTestsCard extends StatelessWidget {
+  const _TwoTestsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyColor = Colors.white.withOpacity(0.95);
+    const titleStyle = TextStyle(
+      color: Colors.white,
+      fontWeight: FontWeight.w600,
+      fontSize: 20,
+    );
+
+    TextSpan bulletLine({
+      required String lead,
+      required String mid,
+      required Color midColor,
+      required String tail,
+    }) {
+      return TextSpan(
+        children: [
+          const TextSpan(
+            text: '•  ',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 20,
+            ),
+          ),
+          TextSpan(
+            text: lead,
+            style: TextStyle(
+              color: bodyColor,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: mid,
+            style: TextStyle(
+              color: midColor,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          TextSpan(
+            text: tail,
+            style: TextStyle(
+              color: bodyColor,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const TextSpan(text: '\n\n'),
+        ],
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 260, maxWidth: 360),
+      child: Card(
+        color: Colors.white.withOpacity(0.24),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.remove_red_eye_outlined, color: Colors.white),
+              const SizedBox(height: 8),
+              const Text('Two test types', style: titleStyle),
+              const SizedBox(height: 6),
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(color: bodyColor, height: 1.35),
+                  children: [
+                    bulletLine(
+                      lead: 'Distance test (≈3 m / 10 ft): screens for ',
+                      mid: 'short-sight',
+                      midColor: const Color(0xFF64B5F6),
+                      tail:
+                          ' (myopia). Near things (books/phone) look clear; far things (signs) can be blurry.',
+                    ),
+                    bulletLine(
+                      lead: 'Near test (≈40 cm / 16″): screens for ',
+                      mid: 'long-sight',
+                      midColor: const Color(0xFFFFCC80),
+                      tail:
+                          ' (hyperopia/presbyopia). Far is clear; up-close reading can be tiring or blurry.',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -738,119 +813,162 @@ class _HowToContent extends StatelessWidget {
   const _HowToContent({required this.onGoTest});
   final VoidCallback onGoTest;
 
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-
-    Widget step(int n, String title, String body) => Card(
-      color: Colors.white.withOpacity(0.12),
+  Widget step({required int n, required String title, required String body}) {
+    return Card(
+      color: Colors.white.withOpacity(0.16),
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.white.withOpacity(0.20),
-          child: Text('$n', style: const TextStyle(color: Colors.white)),
+          backgroundColor: Colors.white.withOpacity(0.22),
+          foregroundColor: Colors.white,
+          child: Text(
+            '$n',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
         title: Text(
           title,
           style: const TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
-        ),
-        subtitle: Text(
-          body,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.95),
             fontWeight: FontWeight.w600,
             fontSize: 20,
           ),
         ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            body,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.95),
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+              fontSize: 20,
+            ),
+          ),
+        ),
       ),
     );
+  }
 
+  Widget bullet(String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('•  ', style: TextStyle(color: Colors.white)),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.95),
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+              fontSize: 20,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1000),
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(
-              'How to Use',
-              style: text.headlineMedium?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 30,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 220,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Go to Test'),
+                  onPressed: onGoTest,
+                ),
               ),
             ),
             const SizedBox(height: 12),
-            step(
-              1,
-              'Prepare the space',
-              'Choose a well-lit room. Reduce glare on the screen. Keep the device at eye level.',
-            ),
-            step(
-              2,
-              'Pick a test',
-              'Distance (~3 m / 10 ft) screens short-sight (myopia). Near (~40 cm / 16″) screens long-sight/presbyopia.',
-            ),
-            step(
-              3,
-              'Cover one eye',
-              'Cover the non-tested eye with your hand or a card. Avoid pressing on the eye.',
-            ),
-            step(
-              4,
-              'Read 5 letters per line',
-              'If ≥3/5 are correct, choose “Read”. Otherwise select “Can’t read”. The app advances or stops accordingly.',
-            ),
-            step(
-              5,
-              'Switch eyes',
-              'The app prompts you to test the other eye, then saves results for both eyes.',
-            ),
-            step(
-              6,
-              'View the report',
-              'The Report tab shows your overall result, age-aware guidance, and hints. You can share/download it.',
-            ),
 
-            const SizedBox(height: 18),
-
-            _Section(
-              title: 'Do & Don’t',
-              children: const [
-                _Bullet(
-                  'Do keep distance consistent (3 m for Distance, 40 cm for Near).',
-                ),
-                _Bullet('Do wear your usual glasses/contacts if used daily.'),
-                _Bullet('Don’t squint or move closer to the screen mid-line.'),
-                _Bullet('Don’t peek with the covered eye.'),
-              ],
+            step(
+              n: 1,
+              title: 'Prepare the space',
+              body:
+                  'Choose a well-lit room. Reduce glare on the screen and keep the device at eye level.',
             ),
-
-            _Section(
-              title: 'Troubleshooting',
-              children: const [
-                _Bullet(
-                  'Letters look too small immediately: confirm the correct test distance.',
-                ),
-                _Bullet(
-                  'Glare or reflections: tilt or dim the screen slightly.',
-                ),
-                _Bullet(
-                  'Helper unavailable: say letters aloud and self-record carefully.',
-                ),
-              ],
+            step(
+              n: 2,
+              title: 'Pick a test',
+              body:
+                  'Distance (~3 m / 10 ft) screens short-sight (myopia). Near (~40 cm / 16″) screens long-sight/reading (hyperopia/presbyopia).',
             ),
+            step(
+              n: 3,
+              title: 'For Distance, use a helper if you can',
+              body:
+                  'A helper can measure ~3 m (10 ft), hold the device steady, and record your answers. This makes the test easier and more accurate.',
+            ),
+            step(
+              n: 4,
+              title: 'Cover the opposite eye',
+              body:
+                  'When testing the RIGHT eye, cover your LEFT eye. When testing the LEFT eye, cover your RIGHT eye. Avoid pressing on the covered eye.',
+            ),
+            step(
+              n: 5,
+              title: 'Read 5 letters per line',
+              body:
+                  'Say the letters out loud. Tap “I Can Read” to move to the next (smaller) line. Tap “I Can’t Read” — the test will switch to the other eye, or if both eyes are done, it will generate your report and take you to the Report page automatically.',
+            ),
+            step(
+              n: 6,
+              title: 'You’re done',
+              body:
+                  'After both eyes are tested, your report is generated automatically and you will be taken to the Report page.',
+            ),
+            const SizedBox(height: 10),
 
-            const SizedBox(height: 16),
-            SizedBox(
-              width: 240,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Go to Test'),
-                onPressed: onGoTest,
+            Card(
+              color: Colors.white.withOpacity(0.12),
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Do & Don’t',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    bullet(
+                      'Do keep distance consistent (3 m for Distance, 40 cm for Near).',
+                    ),
+                    bullet(
+                      'Do wear your usual glasses/contacts if you normally use them.',
+                    ),
+                    bullet(
+                      'Don’t squint or lean forward while reading the letters.',
+                    ),
+                    bullet(
+                      'Stop if you experience eye strain or double vision and consider a full exam.',
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -868,32 +986,53 @@ class _AboutContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
+    final textTheme = Theme.of(context).textTheme;
 
-    Widget info(String title, String body, IconData icon) => Card(
-      color: Colors.white.withOpacity(0.18),
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
+    Widget section(String title, List<Widget> children) => Card(
+      color: Colors.white.withOpacity(0.12),
       margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 20,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...children,
+          ],
         ),
-        subtitle: Text(
-          body,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.95),
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-            height: 1.35,
+      ),
+    );
+
+    Widget bullet(String s) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '•  ',
+            style: TextStyle(color: Colors.white, fontSize: 20),
           ),
-        ),
+          Expanded(
+            child: Text(
+              s,
+              style: textTheme.bodyLarge?.copyWith(
+                color: Colors.white.withOpacity(0.95),
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
 
@@ -903,57 +1042,52 @@ class _AboutContent extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(
-              'About the App',
-              style: text.headlineMedium?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 30,
+            section("Our Approach", [
+              bullet(
+                "Unlike most apps that focus only on prescription renewals, our app takes the doctor’s approach to testing vision.",
               ),
-            ),
-            const SizedBox(height: 12),
-            info(
-              'What it is',
-              'A self-administered **visual acuity screener** for distance and near. '
-                  'It emulates a standard eye-chart experience with five letters per line and clear pass/fail rules.',
-              Icons.visibility_outlined,
-            ),
-            info(
-              'Who it’s for',
-              'Anyone who wants a quick at-home screening: students, adults checking clarity with new glasses, '
-                  'or caregivers monitoring changes. It is **not** a substitute for professional care.',
-              Icons.people_outline,
-            ),
-            info(
-              'What it does',
-              '• Estimates acuity (e.g., 20/20, 20/40) for each eye\n'
-                  '• Flags large differences between eyes\n'
-                  '• Provides age-aware guidance and plain-language hints',
-              Icons.rule,
-            ),
-            info(
-              'What it does not do',
-              'It does not diagnose disease, replace refraction by an optometrist, or assess eye health (pressure, retina, etc.).',
-              Icons.block,
-            ),
-            info(
-              'Methodology (simplified)',
-              'You read five letters per line. If you read ≥3/5 correctly, you pass that line and try the next smaller line. '
-                  'Your final line corresponds to a **logMAR/Snellen** label (e.g., 0.0 ➜ 20/20). '
-                  'Near testing helps screen long-sight/presbyopia; distance helps screen short-sight/myopia.',
-              Icons.science_outlined,
-            ),
-            info(
-              'Privacy',
-              'If you sign in, basic profile and results can be saved to your account so your report persists. '
-                  'You can sign out anytime. No medical diagnosis is stored.',
-              Icons.lock_outline,
-            ),
-            info(
-              'When to seek care',
-              'If your vision is worse than expected, if eyes differ a lot, or if you notice pain, flashes, floaters, or sudden changes—'
-                  'please schedule a comprehensive eye exam.',
-              Icons.local_hospital_outlined,
+              bullet(
+                "We simulate the step-by-step process of a real eye exam, showing letter lines like a Snellen chart.",
+              ),
+              bullet(
+                "We keep things simple and user-friendly with larger text options and clear guides.",
+              ),
+              bullet(
+                "We provide reports and educational insights so users understand their results.",
+              ),
+              bullet("Our app is available on iOS, Android, and the web."),
+            ]),
+            section("The Future", [
+              bullet(
+                "Integrate AI to help detect signs of common eye conditions like diabetic retinopathy or glaucoma.",
+              ),
+              bullet(
+                "Offer community screening tools for schools, NGOs, and rural clinics.",
+              ),
+              bullet(
+                "Create a gamified experience for children to make screening fun.",
+              ),
+              bullet(
+                "Partner with healthcare providers to bridge screening and professional care.",
+              ),
+            ]),
+            Card(
+              color: Colors.white.withOpacity(0.14),
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  "✨ In short, we’re not just building an app — we’re building a future where eye health is accessible, proactive, and preventive.",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -962,14 +1096,62 @@ class _AboutContent extends StatelessWidget {
   }
 }
 
-// ======================================================================
-// TEST + REPORT TABS
-// ======================================================================
-class _TestContent extends StatelessWidget {
-  const _TestContent();
+// ================== TEST + REPORT TABS ==================
+class TestContent extends StatelessWidget {
+  const TestContent({required this.onRequestLogin});
+  final VoidCallback onRequestLogin;
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    // Not signed in → block access and show a sign-in card
+    if (user == null) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Card(
+            color: Colors.white.withOpacity(0.12),
+            elevation: 0,
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sign in required',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please sign in to run the vision test.',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: onRequestLogin,
+                    icon: const Icon(Icons.login),
+                    label: const Text('Sign in / Sign up'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Signed in → show the real test UI
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1100),
@@ -990,42 +1172,26 @@ class _TestContent extends StatelessWidget {
   }
 }
 
+// ================== REPORT TAB ==================
+// This was missing before and would cause a compile error.
+// It uses ReportBody from report_screen.dart.
 class _ReportTab extends StatelessWidget {
   const _ReportTab();
 
   @override
   Widget build(BuildContext context) {
-    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-      fontSize: 20,
-    );
-
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1100),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(8),
           child: Card(
             color: Colors.white.withOpacity(0.12),
             elevation: 0,
             margin: const EdgeInsets.all(8),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Your Report', style: titleStyle),
-                  ),
-                  const SizedBox(height: 10),
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: ReportBody(), // your existing content-only widget
-                  ),
-                ],
-              ),
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: ReportBody(),
             ),
           ),
         ),

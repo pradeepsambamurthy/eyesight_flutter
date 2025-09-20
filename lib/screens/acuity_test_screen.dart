@@ -373,8 +373,8 @@ class _CalibrationPanel extends StatelessWidget {
         ? 'Stand ~3 m / 10 ft from the screen.'
         : 'Hold the screen at ~40 cm / 16″.';
     final line2 = mode == vm.TestMode.distance
-        ? 'Wear your usual distance correction if you use one.'
-        : 'Wear your usual reading correction if you use one.';
+        ? 'Wear your usual distance glasses/contacts if you normally use them.'
+        : 'Wear your usual reading glasses if you normally use them.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,20 +421,23 @@ class _TestRun extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cur = steps[index];
+    final bool isRightEye = eye == _Eye.right;
 
     return LayoutBuilder(
       builder: (context, c) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            (mode == vm.TestMode.distance ? 'Distance' : 'Near') +
-                ' • Testing ${eye == _Eye.right ? 'RIGHT' : 'LEFT'} eye',
+            '${mode == vm.TestMode.distance ? 'Distance' : 'Near'} • '
+            'Testing ${isRightEye ? 'RIGHT' : 'LEFT'} eye',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Read the 5 letters. If ≥3/5 correct tap “Read (≥3/5)”; otherwise tap “Can’t read (<3/5)”.',
-            style: TextStyle(color: Colors.black54),
+          Text(
+            isRightEye
+                ? 'Read the 5 letters. If you can read the very smallest line, the test will switch to the other eye automatically.'
+                : 'Read the 5 letters. If you can read the very smallest line, the test will navigate to the Report page automatically.',
+            style: const TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 16),
 
@@ -477,7 +480,7 @@ class _TestRun extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onPass,
                   icon: const Icon(Icons.check),
-                  label: const Text('Read (≥3/5)'),
+                  label: const Text('I Can Read '),
                 ),
               ),
               const SizedBox(width: 8),
@@ -485,7 +488,7 @@ class _TestRun extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onFail,
                   icon: const Icon(Icons.flag),
-                  label: const Text('Can’t read (<3/5)'),
+                  label: const Text('I Can’t read'),
                 ),
               ),
             ],
