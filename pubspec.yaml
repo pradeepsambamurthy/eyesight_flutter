@@ -21,6 +21,7 @@ dependencies:
   shared_preferences: ^2.2.3
   google_mlkit_face_detection: ^0.13.1
   permission_handler: ^11.3.1
+ 
 
   # PDF/printing
   pdf: ^3.11.3
@@ -48,3 +49,4 @@ flutter:
     - assets/models/glasses_classifier.tflite
     - assets/models/age_gender.tflite
     - assets/images/eye_bg.png
+    - assets/images/logo_peekvision.png
